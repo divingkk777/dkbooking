@@ -37,7 +37,7 @@ const TABS = [
   { id: 'ADS', ko: '광고', en: 'Ads' },
   { id: 'LOGS', ko: '로그', en: 'Logs' },
   { id: 'ARCHIVE', ko: '휴지통', en: 'Archive' },
-  { id: 'SETTINGS', ko: '설정', en: 'Settings' },
+  { id: 'SETTINGS', ko: '설정 대시보드', en: 'Settings' },
 ];
 
 function todayISO() {
@@ -258,7 +258,14 @@ export default function AdminApp({ settings }) {
           if (role === 'INSTRUCTOR') {
             return ['LIST', 'MANIFEST', 'HOTEL'].includes(item.id);
           }
-          if (role !== 'ADMIN' && item.id === 'SETTINGS') return false;
+          // Settings dashboard: full admin + tier-1 (credentials section stays ADMIN-only inside tab)
+          if (
+            item.id === 'SETTINGS' &&
+            role !== 'ADMIN' &&
+            role !== 'ADMIN_TIER1'
+          ) {
+            return false;
+          }
           if (role === 'INSTRUCTOR' && item.id === 'ADS') return false;
           return true;
         }).map((item) => (
@@ -405,17 +412,17 @@ export default function AdminApp({ settings }) {
         />
       )}
 
-      {tab === 'SETTINGS' && role === 'ADMIN' && (
-        <SettingsTab
-          t={t}
-          settings={settings}
-          role={role}
-          onPatchSettings={async (partial) => {
-            await patchSettings(partial);
-            toast.success(t('설정이 저장되었습니다', 'Settings saved'));
-          }}
-        />
-      )}
+      {tab === 'SETTINGS' &&
+        (role === 'ADMIN' || role === 'ADMIN_TIER1') && (
+          <SettingsTab
+            t={t}
+            settings={settings}
+            role={role}
+            onPatchSettings={async (partial) => {
+              await patchSettings(partial);
+            }}
+          />
+        )}
 
       {quoteTarget && (
         <QuoteModal
