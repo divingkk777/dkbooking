@@ -467,69 +467,123 @@ export default function RoomsDiversForm({
                     </div>
                   )}
 
+                  <div className="pair-row" style={{ marginTop: 12 }}>
+                    <div className="diver-split-pane">
+                      <label className="check-label">
+                        <input
+                          type="checkbox"
+                          checked={!!guest.airportPickup}
+                          onChange={(e) =>
+                            updateGuest(
+                              roomIdx,
+                              guestIdx,
+                              'airportPickup',
+                              e.target.checked,
+                            )
+                          }
+                        />
+                        {t('공항 픽업', 'Airport Pickup')}
+                      </label>
+                      {guest.airportPickup && (
+                        <>
+                          <Field
+                            label={t('항공편명', 'Flight No.')}
+                            required
+                          >
+                            <input
+                              className="input-field"
+                              value={guest.pickupFlight || ''}
+                              placeholder="7C2113"
+                              onChange={(e) =>
+                                updateGuest(
+                                  roomIdx,
+                                  guestIdx,
+                                  'pickupFlight',
+                                  e.target.value.toUpperCase(),
+                                )
+                              }
+                            />
+                          </Field>
+                          <Field
+                            label={t('도착시간', 'Arrival time')}
+                            required
+                          >
+                            <HourSelect
+                              value={guest.pickupTime}
+                              fallback="00:00"
+                              onChange={(e) =>
+                                updateGuest(
+                                  roomIdx,
+                                  guestIdx,
+                                  'pickupTime',
+                                  e.target.value,
+                                )
+                              }
+                            />
+                          </Field>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="diver-split-pane">
+                      <label className="check-label">
+                        <input
+                          type="checkbox"
+                          checked={!!guest.airportDropoff}
+                          onChange={(e) =>
+                            updateGuest(
+                              roomIdx,
+                              guestIdx,
+                              'airportDropoff',
+                              e.target.checked,
+                            )
+                          }
+                        />
+                        {t('공항 드롭오프', 'Airport Dropoff')}
+                      </label>
+                      {guest.airportDropoff && (
+                        <>
+                          <Field
+                            label={t('항공편명', 'Flight No.')}
+                            required
+                          >
+                            <input
+                              className="input-field"
+                              value={guest.dropoffFlight || ''}
+                              placeholder="7C2114"
+                              onChange={(e) =>
+                                updateGuest(
+                                  roomIdx,
+                                  guestIdx,
+                                  'dropoffFlight',
+                                  e.target.value.toUpperCase(),
+                                )
+                              }
+                            />
+                          </Field>
+                          <Field
+                            label={t('출발시간', 'Departure time')}
+                            required
+                          >
+                            <HourSelect
+                              value={guest.dropoffTime}
+                              fallback="00:00"
+                              onChange={(e) =>
+                                updateGuest(
+                                  roomIdx,
+                                  guestIdx,
+                                  'dropoffTime',
+                                  e.target.value,
+                                )
+                              }
+                            />
+                          </Field>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="grid-2" style={{ marginTop: 12 }}>
-                    <label className="check-label">
-                      <input
-                        type="checkbox"
-                        checked={!!guest.airportPickup}
-                        onChange={(e) =>
-                          updateGuest(
-                            roomIdx,
-                            guestIdx,
-                            'airportPickup',
-                            e.target.checked,
-                          )
-                        }
-                      />
-                      {t('공항 픽업', 'Airport Pickup')}
-                    </label>
-                    <label className="check-label">
-                      <input
-                        type="checkbox"
-                        checked={!!guest.airportDropoff}
-                        onChange={(e) =>
-                          updateGuest(
-                            roomIdx,
-                            guestIdx,
-                            'airportDropoff',
-                            e.target.checked,
-                          )
-                        }
-                      />
-                      {t('공항 드롭오프', 'Airport Dropoff')}
-                    </label>
-                    {guest.airportPickup && (
-                      <Field label={t('픽업 시간', 'Pickup time')}>
-                        <HourSelect
-                          value={guest.pickupTime}
-                          fallback="00:00"
-                          onChange={(e) =>
-                            updateGuest(
-                              roomIdx,
-                              guestIdx,
-                              'pickupTime',
-                              e.target.value,
-                            )
-                          }
-                        />
-                      </Field>
-                    )}
-                    {guest.airportDropoff && (
-                      <Field label={t('드롭 시간', 'Dropoff time')}>
-                        <HourSelect
-                          value={guest.dropoffTime}
-                          fallback="00:00"
-                          onChange={(e) =>
-                            updateGuest(
-                              roomIdx,
-                              guestIdx,
-                              'dropoffTime',
-                              e.target.value,
-                            )
-                          }
-                        />
-                      </Field>
-                    )}
                     <label className="check-label">
                       <input
                         type="checkbox"

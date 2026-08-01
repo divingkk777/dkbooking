@@ -266,6 +266,24 @@ export default function GuestApp({ settings }) {
             return false;
           }
         }
+        if (g.airportPickup && !String(g.pickupFlight || '').trim()) {
+          toast.warn(
+            t(
+              `다이버 ${gi + 1} 픽업 항공편명을 입력하세요.`,
+              `Enter pickup flight for diver ${gi + 1}.`,
+            ),
+          );
+          return false;
+        }
+        if (g.airportDropoff && !String(g.dropoffFlight || '').trim()) {
+          toast.warn(
+            t(
+              `다이버 ${gi + 1} 드롭오프 항공편명을 입력하세요.`,
+              `Enter dropoff flight for diver ${gi + 1}.`,
+            ),
+          );
+          return false;
+        }
       }
     }
     return true;
