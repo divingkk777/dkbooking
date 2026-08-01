@@ -1,0 +1,25 @@
+:root {
+  --bg: #eef2f6;
+  --bg-soft: #f7f9fc;
+  --surface: #ffffff;
+  --ink: #191f28;
+  --ink-2: #333d4b;
+  --muted: #6b7684;
+  --line: #d1d6db;
+  --line-strong: #333d4b;
+  --brand: #3182f6;
+  --brand-soft: #e8f3ff;
+  --danger: #f04452;
+  --warn: #f09433;
+  --success: #20c997;
+  --pink: #ec4899;
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-sm: 12px;
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+  --tap: 44px;
+  --space: 8px;
+  --max: 1100px;
+  --action-bar-h: 76px;
+  --font: "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+}

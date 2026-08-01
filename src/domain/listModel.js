@@ -1,0 +1,135 @@
+import { toLocalISODate } from './dateUtils';
+
+export function bookingSeqMap(reservations) {
+  return Object.fromEntries(
+    [...(reservations || [])]
+      .sort(
+        (a, b) =>
+          new Date(a.submittedAt || 0) - new Date(b.submittedAt || 0),
+      )
+      .map((res, i) => [res.id, String(i + 1).padStart(4, '0')]),
+  );
+}
+
+export function rowKey(row) {
+  return `${row.resId}_r${row.roomIdx}_g${row.guestIdx}`;
+}
+
+export function formatRoomTypeLabel(roomType) {
+  if (!roomType || roomType === 'NONE') return '';
+  if (roomType === 'TWIN') return 'TWIN(2 BEDS)';
+  if (roomType === 'DELUXE') return 'DELUXE';
+  if (roomType === 'DELUXE_TWIN') return 'DELUXE TWIN';
+  return roomType;
+}
+
+export function actualTrainingCount(guest) {
+  return Math.max(
+    0,
+    (Number(guest.divingDays) || 0) - (Number(guest.restDays) || 0),
+  );
+}
+
+export function flattenGuestRows(reservations, { today } = {}) {
+  const day = today || toLocalISODate();
+  const seq = bookingSeqMap(reservations);
+  const rows = [];
+
+  (reservations || []).forEach((res) => {
+    const rooms = res.roomsData || [];
+    const groupTotalGuests = rooms.reduce(
+      (sum, room) => sum + (room.guests || []).length,
+      0,
+    );
+
+    rooms.forEach((room, roomIdx) => {
+      const guests = room.guests || [];
+      guests.forEach((guest, guestIdx) => {
+        if (!guest) return;
+        // Keep past bookings too for admin; filter only if endDate missing.
+        if (guest.endDate && guest.endDate < day) {
+          // still include — admin often needs full list; mark expired
+        }
+        const roomMates = guests
+          .map((g, i) => (i === guestIdx ? null : g?.name))
+          .filter(Boolean);
+
+        rows.push({
+          ...guest,
+          resId: res.id,
+          reservation: res,
+          repName: res.repName || '',
+          bookingInstructor: res.bookingInstructor || '',
+          paymentStatus: res.paymentStatus || '대기',
+          voucherStatus: res.voucherStatus || '미전달',
+          assignedRoomNumbers: res.assignedRoomNumbers || '',
+          hotelPaymentStatus: res.hotelPaymentStatus || '미정산',
+          groupPin: res.groupPin || '',
+          repEmail: res.repEmail || '',
+          roomType: room.roomType || 'NONE',
+          roomIdx,
+          guestIdx,
+          roomNumberInGroup: roomIdx + 1,
+          roomMates,
+          roomGuestCount: room.guestCount || guests.length,
+          groupTotalGuests,
+          submittedAt: res.submittedAt || '',
+          isNew: guest.isNew !== false,
+          bookingSeq: seq[res.id] || '0001',
+        });
+      });
+    });
+  });
+
+  return rows.sort((a, b) => {
+    const as = a.startDate || '';
+    const bs = b.startDate || '';
+    if (as !== bs) return as.localeCompare(bs);
+    return String(a.bookingSeq).localeCompare(String(b.bookingSeq));
+  });
+}
+
+export function isPaidStatus(paymentStatus, accounts = []) {
+  const paidNames = new Set([
+    'IDA',
+    'CASABLUE',
+    'CEBU',
+    'OTHER',
+    '카카오',
+    ...accounts.filter((a) => a.isActive !== false).map((a) => a.name),
+  ]);
+  if (!paymentStatus || paymentStatus === '대기') return false;
+  return paidNames.has(paymentStatus);
+}
+
+export function unitLabel(assignedLine, lang = 'KO') {
+  if (!assignedLine) return '';
+  if (lang !== 'EN') return assignedLine;
+  return String(assignedLine)
+    .replace(/트라이마란/g, 'Trimaran')
+    .replace(/방카/g, 'Banca')
+    .replace(/카타마란/g, 'Catamaran')
+    .replace(/미배정 유닛/g, 'Unassigned Unit');
+}
+
+export function patchGuestInRooms(roomsData, roomIdx, guestIdx, patch) {
+  const rooms = structuredClone(roomsData || []);
+  if (!rooms[roomIdx]?.guests?.[guestIdx]) return rooms;
+  rooms[roomIdx].guests[guestIdx] = {
+    ...rooms[roomIdx].guests[guestIdx],
+    ...patch,
+  };
+  return rooms;
+}
+
+export function removeGuestFromRooms(roomsData, roomIdx, guestIdx) {
+  const rooms = structuredClone(roomsData || []);
+  if (!rooms[roomIdx]?.guests) return { rooms, empty: true };
+  rooms[roomIdx].guests.splice(guestIdx, 1);
+  if (rooms[roomIdx].guests.length === 0) {
+    rooms.splice(roomIdx, 1);
+  } else {
+    rooms[roomIdx].guestCount = rooms[roomIdx].guests.length;
+  }
+  return { rooms, empty: rooms.length === 0 };
+}

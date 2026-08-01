@@ -1,0 +1,12 @@
+{
+  "projects": {
+    "default": "diving-reservation-app"
+  },
+  "targets": {
+    "diving-reservation-app": {
+      "hosting": {
+        "dkbooking": ["dkbooking"]
+      }
+    }
+  }
+}
