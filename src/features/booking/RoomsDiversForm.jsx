@@ -1,18 +1,10 @@
-import { createEmptyGuest, DISCIPLINES } from '../../domain/defaults';
+import {
+  createEmptyGuest,
+  DISCIPLINES,
+  HOUR_OPTIONS,
+  normalizeHourTime,
+} from '../../domain/defaults';
 import { formatMoney } from '../../domain/pricing';
-
-/** 24h clock, 1-hour steps only: 00:00 … 23:00 */
-const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => {
-  const value = `${String(h).padStart(2, '0')}:00`;
-  return { value, label: value };
-});
-
-function normalizeHour(value, fallback = '14:00') {
-  if (!value) return fallback;
-  const hour = Number(String(value).split(':')[0]);
-  if (Number.isNaN(hour) || hour < 0 || hour > 23) return fallback;
-  return `${String(hour).padStart(2, '0')}:00`;
-}
 
 function Field({ label, required, children }) {
   return (
@@ -23,6 +15,19 @@ function Field({ label, required, children }) {
       </label>
       {children}
     </div>
+  );
+}
+
+function HourSelect({ value, fallback, onChange }) {
+  const normalized = normalizeHourTime(value, fallback);
+  return (
+    <select className="input-field" value={normalized} onChange={onChange}>
+      {HOUR_OPTIONS.map((h) => (
+        <option key={h} value={h}>
+          {h}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -53,14 +58,28 @@ export default function RoomsDiversForm({
         if (key === 'name') {
           nextVal = String(value).replace(/[^a-zA-Z\s]/g, '').toUpperCase();
         }
+        if (
+          key === 'checkInTime' ||
+          key === 'checkOutTime' ||
+          key === 'pickupTime' ||
+          key === 'dropoffTime'
+        ) {
+          const fallback =
+            key === 'checkOutTime'
+              ? '11:00'
+              : key === 'checkInTime'
+                ? '14:00'
+                : '00:00';
+          nextVal = normalizeHourTime(value, fallback);
+        }
         guests[guestIdx] = { ...guests[guestIdx], [key]: nextVal };
 
         if (key === 'checkInTime') {
-          const hour = Number(String(value).split(':')[0] || 14);
+          const hour = Number(String(nextVal).split(':')[0] || 14);
           if (hour < 14) guests[guestIdx].dawnCheckIn = true;
         }
         if (key === 'checkOutTime') {
-          const hour = Number(String(value).split(':')[0] || 11);
+          const hour = Number(String(nextVal).split(':')[0] || 11);
           if (hour > 11) guests[guestIdx].lateCheckOut = true;
         }
         return { ...room, guests };
@@ -106,7 +125,7 @@ export default function RoomsDiversForm({
             <h3 style={{ marginTop: 0 }}>
               {t(`객실 ${roomIdx + 1}`, `Room ${roomIdx + 1}`)}
             </h3>
-            <div className="grid-2">
+            <div className="pair-row">
               <Field label={t('객실 타입', 'Room Type')} required>
                 <select
                   className="input-field"
@@ -156,201 +175,205 @@ export default function RoomsDiversForm({
                     ) : null}
                   </h4>
 
-                  <div className="grid-2">
-                    <Field label={t('영문 성명', 'Name (Passport)')} required>
-                      <input
-                        className="input-field"
-                        value={guest.name || ''}
-                        onChange={(e) =>
-                          updateGuest(roomIdx, guestIdx, 'name', e.target.value)
-                        }
-                        placeholder="HONG GILDONG"
-                      />
-                    </Field>
-                    <Field label={t('국적', 'Nationality')} required>
-                      <input
-                        className="input-field"
-                        value={guest.nationality || ''}
-                        onChange={(e) =>
-                          updateGuest(
-                            roomIdx,
-                            guestIdx,
-                            'nationality',
-                            e.target.value,
-                          )
-                        }
-                      />
-                    </Field>
-                    <Field label={t('레벨', 'Level')} required>
-                      <select
-                        className="input-field"
-                        value={guest.level || 'LEVEL_1'}
-                        onChange={(e) =>
-                          updateGuest(roomIdx, guestIdx, 'level', e.target.value)
-                        }
-                      >
-                        {['LEVEL_1', 'LEVEL_2', 'LEVEL_3', 'LEVEL_4', 'INSTRUCTOR'].map(
-                          (lv) => (
-                            <option key={lv} value={lv}>
-                              {lv}
-                            </option>
-                          ),
-                        )}
-                      </select>
-                    </Field>
-                    <Field label={t('종목', 'Discipline')} required>
-                      <select
-                        className="input-field"
-                        value={
-                          DISCIPLINES.includes(guest.discipline)
-                            ? guest.discipline
-                            : 'CWT'
-                        }
-                        onChange={(e) =>
-                          updateGuest(
-                            roomIdx,
-                            guestIdx,
-                            'discipline',
-                            e.target.value,
-                          )
-                        }
-                      >
-                        {DISCIPLINES.map((d) => (
-                          <option key={d} value={d}>
-                            {d}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field label={t('목표수심 (m)', 'Target Depth (m)')} required>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        className="input-field"
-                        value={guest.targetDepth ?? ''}
-                        placeholder="40"
-                        onChange={(e) =>
-                          updateGuest(
-                            roomIdx,
-                            guestIdx,
-                            'targetDepth',
-                            e.target.value === ''
-                              ? ''
-                              : Math.max(0, Number(e.target.value) || 0),
-                          )
-                        }
-                      />
-                    </Field>
-                  </div>
+                  <div className="diver-split">
+                    <div className="diver-split-pane">
+                      <div className="label-text" style={{ marginBottom: 10 }}>
+                        {t('기본 정보', 'Basic Info')}
+                      </div>
+                      <div className="pair-row">
+                        <Field label={t('영문 성명', 'Name (Passport)')} required>
+                          <input
+                            className="input-field"
+                            value={guest.name || ''}
+                            onChange={(e) =>
+                              updateGuest(roomIdx, guestIdx, 'name', e.target.value)
+                            }
+                            placeholder="HONG GILDONG"
+                          />
+                        </Field>
+                        <Field label={t('국적', 'Nationality')} required>
+                          <input
+                            className="input-field"
+                            value={guest.nationality || ''}
+                            onChange={(e) =>
+                              updateGuest(
+                                roomIdx,
+                                guestIdx,
+                                'nationality',
+                                e.target.value,
+                              )
+                            }
+                          />
+                        </Field>
+                      </div>
+                      <div className="pair-row">
+                        <Field label={t('레벨', 'Level')} required>
+                          <select
+                            className="input-field"
+                            value={guest.level || 'LEVEL_1'}
+                            onChange={(e) =>
+                              updateGuest(roomIdx, guestIdx, 'level', e.target.value)
+                            }
+                          >
+                            {[
+                              'LEVEL_1',
+                              'LEVEL_2',
+                              'LEVEL_3',
+                              'LEVEL_4',
+                              'INSTRUCTOR',
+                            ].map((lv) => (
+                              <option key={lv} value={lv}>
+                                {lv}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                        <Field label={t('종목', 'Discipline')} required>
+                          <select
+                            className="input-field"
+                            value={
+                              DISCIPLINES.includes(guest.discipline)
+                                ? guest.discipline
+                                : 'CWT'
+                            }
+                            onChange={(e) =>
+                              updateGuest(
+                                roomIdx,
+                                guestIdx,
+                                'discipline',
+                                e.target.value,
+                              )
+                            }
+                          >
+                            {DISCIPLINES.map((d) => (
+                              <option key={d} value={d}>
+                                {d}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                      </div>
+                      <Field label={t('목표수심 (m)', 'Target Depth (m)')} required>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          className="input-field"
+                          value={guest.targetDepth ?? ''}
+                          placeholder="40"
+                          onChange={(e) =>
+                            updateGuest(
+                              roomIdx,
+                              guestIdx,
+                              'targetDepth',
+                              e.target.value === ''
+                                ? ''
+                                : Math.max(0, Number(e.target.value) || 0),
+                            )
+                          }
+                        />
+                      </Field>
+                    </div>
 
-                  <div className="grid-2-fixed">
-                    <Field label={t('시작일', 'Start Date')} required>
-                      <input
-                        type="date"
-                        className="input-field"
-                        value={guest.startDate || ''}
-                        onChange={(e) =>
-                          updateGuest(
-                            roomIdx,
-                            guestIdx,
-                            'startDate',
-                            e.target.value,
-                          )
-                        }
-                      />
-                    </Field>
-                    <Field label={t('종료일', 'End Date')} required>
-                      <input
-                        type="date"
-                        className="input-field"
-                        value={guest.endDate || ''}
-                        onChange={(e) =>
-                          updateGuest(
-                            roomIdx,
-                            guestIdx,
-                            'endDate',
-                            e.target.value,
-                          )
-                        }
-                      />
-                    </Field>
-                  </div>
-
-                  <div className="grid-2-fixed">
-                    <Field label={t('체크인 시간', 'Check-in')}>
-                      <select
-                        className="input-field"
-                        value={normalizeHour(guest.checkInTime, '14:00')}
-                        onChange={(e) =>
-                          updateGuest(
-                            roomIdx,
-                            guestIdx,
-                            'checkInTime',
-                            normalizeHour(e.target.value, '14:00'),
-                          )
-                        }
-                      >
-                        {HOUR_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field label={t('체크아웃 시간', 'Check-out')}>
-                      <select
-                        className="input-field"
-                        value={normalizeHour(guest.checkOutTime, '11:00')}
-                        onChange={(e) =>
-                          updateGuest(
-                            roomIdx,
-                            guestIdx,
-                            'checkOutTime',
-                            normalizeHour(e.target.value, '11:00'),
-                          )
-                        }
-                      >
-                        {HOUR_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                  </div>
-
-                  <div className="grid-row" style={{ marginTop: 8 }}>
-                    <label className="check-label">
-                      <input
-                        type="checkbox"
-                        checked={!!guest.dawnCheckIn}
-                        onChange={(e) =>
-                          updateGuest(
-                            roomIdx,
-                            guestIdx,
-                            'dawnCheckIn',
-                            e.target.checked,
-                          )
-                        }
-                      />
-                      {t('이른 체크인 (+1박)', 'Early Check-in (+1n)')}
-                    </label>
-                    <label className="check-label">
-                      <input
-                        type="checkbox"
-                        checked={!!guest.lateCheckOut}
-                        onChange={(e) =>
-                          updateGuest(
-                            roomIdx,
-                            guestIdx,
-                            'lateCheckOut',
-                            e.target.checked,
-                          )
-                        }
-                      />
-                      {t('레이트 체크아웃 (+1박)', 'Late Check-out (+1n)')}
-                    </label>
+                    <div className="diver-split-pane">
+                      <div className="label-text" style={{ marginBottom: 10 }}>
+                        {t('일정 / 숙박', 'Schedule / Stay')}
+                      </div>
+                      <div className="pair-row">
+                        <Field label={t('시작일', 'Start Date')} required>
+                          <input
+                            type="date"
+                            className="input-field"
+                            value={guest.startDate || ''}
+                            onChange={(e) =>
+                              updateGuest(
+                                roomIdx,
+                                guestIdx,
+                                'startDate',
+                                e.target.value,
+                              )
+                            }
+                          />
+                        </Field>
+                        <Field label={t('종료일', 'End Date')} required>
+                          <input
+                            type="date"
+                            className="input-field"
+                            value={guest.endDate || ''}
+                            onChange={(e) =>
+                              updateGuest(
+                                roomIdx,
+                                guestIdx,
+                                'endDate',
+                                e.target.value,
+                              )
+                            }
+                          />
+                        </Field>
+                      </div>
+                      <div className="pair-row">
+                        <Field label={t('체크인 시간', 'Check-in')}>
+                          <HourSelect
+                            value={guest.checkInTime}
+                            fallback="14:00"
+                            onChange={(e) =>
+                              updateGuest(
+                                roomIdx,
+                                guestIdx,
+                                'checkInTime',
+                                e.target.value,
+                              )
+                            }
+                          />
+                        </Field>
+                        <Field label={t('체크아웃 시간', 'Check-out')}>
+                          <HourSelect
+                            value={guest.checkOutTime}
+                            fallback="11:00"
+                            onChange={(e) =>
+                              updateGuest(
+                                roomIdx,
+                                guestIdx,
+                                'checkOutTime',
+                                e.target.value,
+                              )
+                            }
+                          />
+                        </Field>
+                      </div>
+                      <div className="pair-row" style={{ marginTop: 4 }}>
+                        <label className="check-label">
+                          <input
+                            type="checkbox"
+                            checked={!!guest.dawnCheckIn}
+                            onChange={(e) =>
+                              updateGuest(
+                                roomIdx,
+                                guestIdx,
+                                'dawnCheckIn',
+                                e.target.checked,
+                              )
+                            }
+                          />
+                          {t('이른 체크인 (+1박)', 'Early Check-in (+1n)')}
+                        </label>
+                        <label className="check-label">
+                          <input
+                            type="checkbox"
+                            checked={!!guest.lateCheckOut}
+                            onChange={(e) =>
+                              updateGuest(
+                                roomIdx,
+                                guestIdx,
+                                'lateCheckOut',
+                                e.target.checked,
+                              )
+                            }
+                          />
+                          {t('레이트 체크아웃 (+1박)', 'Late Check-out (+1n)')}
+                        </label>
+                      </div>
+                    </div>
                   </div>
 
                   <div style={{ marginTop: 16 }}>
@@ -365,7 +388,10 @@ export default function RoomsDiversForm({
                       {trainingTypes
                         .filter((tr) => tr.isActive !== false)
                         .map((tr) => (
-                          <Field key={tr.id} label={`${tr.name} (₩${formatMoney(tr.priceKRW)})`}>
+                          <Field
+                            key={tr.id}
+                            label={`${tr.name} (₩${formatMoney(tr.priceKRW)})`}
+                          >
                             <input
                               type="number"
                               min="0"
@@ -386,7 +412,7 @@ export default function RoomsDiversForm({
                   </div>
 
                   {selfCount > 0 && (
-                    <div className="grid-2" style={{ marginTop: 12 }}>
+                    <div className="pair-row" style={{ marginTop: 12 }}>
                       <Field
                         label={t('세이프티 강사', 'Safety Instructor')}
                         required
@@ -459,6 +485,38 @@ export default function RoomsDiversForm({
                       />
                       {t('공항 드롭오프', 'Airport Dropoff')}
                     </label>
+                    {guest.airportPickup && (
+                      <Field label={t('픽업 시간', 'Pickup time')}>
+                        <HourSelect
+                          value={guest.pickupTime}
+                          fallback="00:00"
+                          onChange={(e) =>
+                            updateGuest(
+                              roomIdx,
+                              guestIdx,
+                              'pickupTime',
+                              e.target.value,
+                            )
+                          }
+                        />
+                      </Field>
+                    )}
+                    {guest.airportDropoff && (
+                      <Field label={t('드롭 시간', 'Dropoff time')}>
+                        <HourSelect
+                          value={guest.dropoffTime}
+                          fallback="00:00"
+                          onChange={(e) =>
+                            updateGuest(
+                              roomIdx,
+                              guestIdx,
+                              'dropoffTime',
+                              e.target.value,
+                            )
+                          }
+                        />
+                      </Field>
+                    )}
                     <label className="check-label">
                       <input
                         type="checkbox"

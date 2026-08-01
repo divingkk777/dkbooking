@@ -32,6 +32,19 @@ export const DIVER_LEVELS = ['LEVEL_1', 'LEVEL_2', 'LEVEL_3', 'LEVEL_4', 'INSTRU
 /** Freediving disciplines selectable in booking step 2 */
 export const DISCIPLINES = ['CWT', 'CWTB', 'FIM', 'CNF'];
 
+/** 24h clock, 1-hour steps only (HH:00) */
+export const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => {
+  const hh = String(h).padStart(2, '0');
+  return `${hh}:00`;
+});
+
+export function normalizeHourTime(value, fallback = '14:00') {
+  if (!value || typeof value !== 'string') return fallback;
+  const hour = Number(value.split(':')[0]);
+  if (!Number.isFinite(hour) || hour < 0 || hour > 23) return fallback;
+  return `${String(hour).padStart(2, '0')}:00`;
+}
+
 export const EMPTY_TRAINING_COUNTS = {
   MAX_60: 0,
   MAX_90: 0,
