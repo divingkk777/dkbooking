@@ -4,6 +4,7 @@ import {
   HOUR_OPTIONS,
   normalizeHourTime,
 } from '../../domain/defaults';
+import { toLocalISODate } from '../../domain/dateUtils';
 import { formatMoney } from '../../domain/pricing';
 
 function Field({ label, required, children }) {
@@ -40,6 +41,8 @@ export default function RoomsDiversForm({
   safetyInstructors = [],
   processed,
 }) {
+  const today = toLocalISODate();
+
   const updateRoom = (roomIdx, patch) => {
     setRoomsData((prev) =>
       prev.map((room, i) => (i === roomIdx ? { ...room, ...patch } : room)),
@@ -284,21 +287,31 @@ export default function RoomsDiversForm({
                           <input
                             type="date"
                             className="input-field"
+                            min={today}
                             value={guest.startDate || ''}
-                            onChange={(e) =>
-                              updateGuest(
-                                roomIdx,
-                                guestIdx,
-                                'startDate',
-                                e.target.value,
-                              )
-                            }
+                            onChange={(e) => {
+                              const nextStart = e.target.value;
+                              if (nextStart && nextStart < today) return;
+                              setRoomsData((prev) =>
+                                prev.map((room, i) => {
+                                  if (i !== roomIdx) return room;
+                                  const guests = [...(room.guests || [])];
+                                  const g = { ...guests[guestIdx], startDate: nextStart };
+                                  if (g.endDate && nextStart && g.endDate < nextStart) {
+                                    g.endDate = nextStart;
+                                  }
+                                  guests[guestIdx] = g;
+                                  return { ...room, guests };
+                                }),
+                              );
+                            }}
                           />
                         </Field>
                         <Field label={t('종료일', 'End Date')} required>
                           <input
                             type="date"
                             className="input-field"
+                            min={guest.startDate || today}
                             value={guest.endDate || ''}
                             onChange={(e) =>
                               updateGuest(
