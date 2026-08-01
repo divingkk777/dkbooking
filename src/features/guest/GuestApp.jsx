@@ -223,6 +223,15 @@ export default function GuestApp({ settings }) {
           );
           return false;
         }
+        if (!g.discipline || g.targetDepth === '' || g.targetDepth == null) {
+          toast.warn(
+            t(
+              `다이버 ${gi + 1} 종목과 목표수심을 입력하세요.`,
+              `Select discipline and target depth for diver ${gi + 1}.`,
+            ),
+          );
+          return false;
+        }
         const counts = g.trainingCounts || {};
         const totalTrain = Object.values(counts).reduce(
           (a, b) => a + (Number(b) || 0),

@@ -29,6 +29,9 @@ export const OPTION_PRICES_USD = {
 
 export const DIVER_LEVELS = ['LEVEL_1', 'LEVEL_2', 'LEVEL_3', 'LEVEL_4', 'INSTRUCTOR'];
 
+/** Freediving disciplines selectable in booking step 2 */
+export const DISCIPLINES = ['CWT', 'CWTB', 'FIM', 'CNF'];
+
 export const EMPTY_TRAINING_COUNTS = {
   MAX_60: 0,
   MAX_90: 0,

@@ -1,4 +1,4 @@
-import { createEmptyGuest } from '../../domain/defaults';
+import { createEmptyGuest, DISCIPLINES } from '../../domain/defaults';
 import { formatMoney } from '../../domain/pricing';
 
 function Field({ label, required, children }) {
@@ -185,16 +185,46 @@ export default function RoomsDiversForm({
                         )}
                       </select>
                     </Field>
-                    <Field label={t('종목', 'Discipline')}>
-                      <input
+                    <Field label={t('종목', 'Discipline')} required>
+                      <select
                         className="input-field"
-                        value={guest.discipline || 'CWT'}
+                        value={
+                          DISCIPLINES.includes(guest.discipline)
+                            ? guest.discipline
+                            : 'CWT'
+                        }
                         onChange={(e) =>
                           updateGuest(
                             roomIdx,
                             guestIdx,
                             'discipline',
                             e.target.value,
+                          )
+                        }
+                      >
+                        {DISCIPLINES.map((d) => (
+                          <option key={d} value={d}>
+                            {d}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label={t('목표수심 (m)', 'Target Depth (m)')} required>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        className="input-field"
+                        value={guest.targetDepth ?? ''}
+                        placeholder="40"
+                        onChange={(e) =>
+                          updateGuest(
+                            roomIdx,
+                            guestIdx,
+                            'targetDepth',
+                            e.target.value === ''
+                              ? ''
+                              : Math.max(0, Number(e.target.value) || 0),
                           )
                         }
                       />
