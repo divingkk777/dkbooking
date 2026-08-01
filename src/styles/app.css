@@ -78,6 +78,14 @@ textarea {
   }
 }
 
+/* Always keep start/end (or check-in/out) on one row */
+.grid-2-fixed {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
 .label-text {
   display: block;
   font-size: 13px;

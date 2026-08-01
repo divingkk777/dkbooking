@@ -1,6 +1,19 @@
 import { createEmptyGuest, DISCIPLINES } from '../../domain/defaults';
 import { formatMoney } from '../../domain/pricing';
 
+/** 24h clock, 1-hour steps only: 00:00 … 23:00 */
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => {
+  const value = `${String(h).padStart(2, '0')}:00`;
+  return { value, label: value };
+});
+
+function normalizeHour(value, fallback = '14:00') {
+  if (!value) return fallback;
+  const hour = Number(String(value).split(':')[0]);
+  if (Number.isNaN(hour) || hour < 0 || hour > 23) return fallback;
+  return `${String(hour).padStart(2, '0')}:00`;
+}
+
 function Field({ label, required, children }) {
   return (
     <div>
@@ -229,6 +242,9 @@ export default function RoomsDiversForm({
                         }
                       />
                     </Field>
+                  </div>
+
+                  <div className="grid-2-fixed">
                     <Field label={t('시작일', 'Start Date')} required>
                       <input
                         type="date"
@@ -250,39 +266,57 @@ export default function RoomsDiversForm({
                         className="input-field"
                         value={guest.endDate || ''}
                         onChange={(e) =>
-                          updateGuest(roomIdx, guestIdx, 'endDate', e.target.value)
+                          updateGuest(
+                            roomIdx,
+                            guestIdx,
+                            'endDate',
+                            e.target.value,
+                          )
                         }
                       />
                     </Field>
+                  </div>
+
+                  <div className="grid-2-fixed">
                     <Field label={t('체크인 시간', 'Check-in')}>
-                      <input
-                        type="time"
+                      <select
                         className="input-field"
-                        value={guest.checkInTime || '14:00'}
+                        value={normalizeHour(guest.checkInTime, '14:00')}
                         onChange={(e) =>
                           updateGuest(
                             roomIdx,
                             guestIdx,
                             'checkInTime',
-                            e.target.value,
+                            normalizeHour(e.target.value, '14:00'),
                           )
                         }
-                      />
+                      >
+                        {HOUR_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
                     </Field>
                     <Field label={t('체크아웃 시간', 'Check-out')}>
-                      <input
-                        type="time"
+                      <select
                         className="input-field"
-                        value={guest.checkOutTime || '11:00'}
+                        value={normalizeHour(guest.checkOutTime, '11:00')}
                         onChange={(e) =>
                           updateGuest(
                             roomIdx,
                             guestIdx,
                             'checkOutTime',
-                            e.target.value,
+                            normalizeHour(e.target.value, '11:00'),
                           )
                         }
-                      />
+                      >
+                        {HOUR_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
                     </Field>
                   </div>
 
