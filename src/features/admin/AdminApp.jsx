@@ -430,6 +430,7 @@ export default function AdminApp({ settings }) {
       {editTarget && (
         <EditReservationModal
           t={t}
+          lang={lang}
           reservation={editTarget}
           settings={settings}
           onClose={() => setEditTarget(null)}

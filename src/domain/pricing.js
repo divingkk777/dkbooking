@@ -9,6 +9,13 @@ export function formatMoney(value) {
   return Number(value).toLocaleString();
 }
 
+/** KO → ₩KRW, EN → $USD (fixed catalog amounts). */
+export function formatPriceLabel(lang, priceKRW, priceUSD) {
+  const isEn = String(lang || '').toUpperCase() === 'EN';
+  if (isEn) return `$${formatMoney(priceUSD)}`;
+  return `₩${formatMoney(priceKRW)}`;
+}
+
 function nightsBetween(startDate, endDate) {
   if (!startDate || !endDate) return 0;
   const start = new Date(startDate);

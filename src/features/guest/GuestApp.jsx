@@ -638,6 +638,7 @@ export default function GuestApp({ settings }) {
       {step === 2 && (
         <RoomsDiversForm
           t={t}
+          lang={lang}
           roomsData={roomsData}
           setRoomsData={setRoomsData}
           roomTypes={settings.roomTypesConfig}

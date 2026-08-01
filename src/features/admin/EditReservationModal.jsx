@@ -8,6 +8,7 @@ import RoomsDiversForm from '../booking/RoomsDiversForm';
 
 export default function EditReservationModal({
   t,
+  lang = 'KO',
   reservation,
   settings,
   onClose,
@@ -185,6 +186,7 @@ export default function EditReservationModal({
 
         <RoomsDiversForm
           t={t}
+          lang={lang}
           roomsData={roomsData}
           setRoomsData={setRoomsData}
           roomTypes={settings.roomTypesConfig}

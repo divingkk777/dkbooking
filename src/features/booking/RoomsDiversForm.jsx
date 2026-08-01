@@ -3,9 +3,11 @@ import {
   DISCIPLINES,
   HOUR_OPTIONS,
   normalizeHourTime,
+  OPTION_PRICES_KRW,
+  OPTION_PRICES_USD,
 } from '../../domain/defaults';
 import { toLocalISODate } from '../../domain/dateUtils';
-import { formatMoney } from '../../domain/pricing';
+import { formatPriceLabel } from '../../domain/pricing';
 
 function Field({ label, required, children }) {
   return (
@@ -34,6 +36,7 @@ function HourSelect({ value, fallback, onChange }) {
 
 export default function RoomsDiversForm({
   t,
+  lang = 'KO',
   roomsData,
   setRoomsData,
   roomTypes,
@@ -42,6 +45,7 @@ export default function RoomsDiversForm({
   processed,
 }) {
   const today = toLocalISODate();
+  const price = (krw, usd) => formatPriceLabel(lang, krw, usd);
 
   const updateRoom = (roomIdx, patch) => {
     setRoomsData((prev) =>
@@ -143,8 +147,8 @@ export default function RoomsDiversForm({
                     .filter((r) => r.isActive !== false)
                     .map((r) => (
                       <option key={r.id} value={r.id}>
-                        {t(r.nameKO || r.name, r.nameEN || r.name)} (₩
-                        {formatMoney(r.priceKRW)})
+                        {t(r.nameKO || r.name, r.nameEN || r.name)} (
+                        {price(r.priceKRW, r.priceUSD)})
                       </option>
                     ))}
                 </select>
@@ -173,7 +177,7 @@ export default function RoomsDiversForm({
                     {t(`다이버 ${guestIdx + 1}`, `Diver ${guestIdx + 1}`)}
                     {pg ? (
                       <span className="badge badge-brand" style={{ marginLeft: 8 }}>
-                        ₩{formatMoney(pg.individualTotalKRW)}
+                        {price(pg.individualTotalKRW, pg.individualTotalUSD)}
                       </span>
                     ) : null}
                   </h4>
@@ -403,7 +407,7 @@ export default function RoomsDiversForm({
                         .map((tr) => (
                           <Field
                             key={tr.id}
-                            label={`${tr.name} (₩${formatMoney(tr.priceKRW)})`}
+                            label={`${tr.name} (${price(tr.priceKRW, tr.priceUSD)})`}
                           >
                             <input
                               type="number"
@@ -482,7 +486,12 @@ export default function RoomsDiversForm({
                             )
                           }
                         />
-                        {t('공항 픽업', 'Airport Pickup')}
+                        {t('공항 픽업', 'Airport Pickup')} (
+                        {price(
+                          OPTION_PRICES_KRW.TRANSFER,
+                          OPTION_PRICES_USD.TRANSFER,
+                        )}
+                        )
                       </label>
                       {guest.airportPickup && (
                         <>
@@ -539,7 +548,12 @@ export default function RoomsDiversForm({
                             )
                           }
                         />
-                        {t('공항 드롭오프', 'Airport Dropoff')}
+                        {t('공항 드롭오프', 'Airport Dropoff')} (
+                        {price(
+                          OPTION_PRICES_KRW.TRANSFER,
+                          OPTION_PRICES_USD.TRANSFER,
+                        )}
+                        )
                       </label>
                       {guest.airportDropoff && (
                         <>
@@ -597,9 +611,19 @@ export default function RoomsDiversForm({
                           )
                         }
                       />
-                      {t('영상 촬영', 'Video')}
+                      {t('영상 촬영', 'Video')} (
+                      {price(
+                        OPTION_PRICES_KRW.VIDEO_PER_DAY,
+                        OPTION_PRICES_USD.VIDEO_PER_DAY,
+                      )}
+                      /{t('일', 'day')})
                     </label>
-                    <Field label={t('아일랜드 호핑 횟수', 'Island Hopping')}>
+                    <Field
+                      label={`${t('아일랜드 호핑 횟수', 'Island Hopping')} (${price(
+                        OPTION_PRICES_KRW.HOPPING,
+                        OPTION_PRICES_USD.HOPPING,
+                      )}/${t('회', 'x')})`}
+                    >
                       <input
                         type="number"
                         min="0"
@@ -615,7 +639,12 @@ export default function RoomsDiversForm({
                         }
                       />
                     </Field>
-                    <Field label={t('펀다이빙 횟수', 'Fun Diving')}>
+                    <Field
+                      label={`${t('펀다이빙 횟수', 'Fun Diving')} (${price(
+                        OPTION_PRICES_KRW.FUN_DIVING,
+                        OPTION_PRICES_USD.FUN_DIVING,
+                      )}/${t('회', 'x')})`}
+                    >
                       <input
                         type="number"
                         min="0"
