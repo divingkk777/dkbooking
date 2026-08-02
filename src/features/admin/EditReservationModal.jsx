@@ -55,6 +55,7 @@ export default function EditReservationModal({
         settings.exchangeRate,
         settings.roomTypesConfig,
         settings.trainingTypesConfig,
+        settings.optionPricesConfig,
       ),
     [roomsData, settings],
   );
@@ -73,6 +74,7 @@ export default function EditReservationModal({
         settings.exchangeRate,
         settings.roomTypesConfig,
         settings.trainingTypesConfig,
+        settings.optionPricesConfig,
       );
       await updateReservation(reservation.id, {
         bookingInstructor: bookingInstructor.trim(),
@@ -191,6 +193,7 @@ export default function EditReservationModal({
           setRoomsData={setRoomsData}
           roomTypes={settings.roomTypesConfig}
           trainingTypes={settings.trainingTypesConfig}
+          optionPrices={settings.optionPricesConfig}
           safetyInstructors={(settings.safetyInstructorsConfig || []).map(
             (s) => s.name || s,
           )}

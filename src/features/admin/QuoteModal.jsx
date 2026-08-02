@@ -3,12 +3,17 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   EMPTY_TRAINING_DISCOUNTS,
 } from '../../domain/defaults';
-import { formatMoney, processRoomsData } from '../../domain/pricing';
+import {
+  formatMoney,
+  formatPricePair,
+  processRoomsData,
+} from '../../domain/pricing';
 import { updateReservation } from '../../data/reservationsRepo';
 import { useToast } from '../../ui/ToastContext';
 
 export default function QuoteModal({
   t,
+  lang = 'KO',
   target,
   reservations,
   settings,
@@ -78,6 +83,7 @@ export default function QuoteModal({
       settings.exchangeRate,
       settings.roomTypesConfig,
       settings.trainingTypesConfig,
+      settings.optionPricesConfig,
     );
   }, [res, previewGuest, target, settings]);
 
@@ -100,6 +106,7 @@ export default function QuoteModal({
         settings.exchangeRate,
         settings.roomTypesConfig,
         settings.trainingTypesConfig,
+        settings.optionPricesConfig,
       );
       await updateReservation(res.id, {
         roomsData: next.processedRooms,
@@ -227,13 +234,16 @@ export default function QuoteModal({
             {guest.startDate} ~ {guest.endDate}
           </p>
           <p>
-            {t('객실', 'Room')}: ₩{formatMoney(pg.roomShareCost)}
+            {t('객실', 'Room')}:{' '}
+            {formatPricePair(lang, pg.roomShareCost, pg.roomShareCostUSD)}
           </p>
           <p>
-            {t('트레이닝', 'Training')}: ₩{formatMoney(pg.trainingCost)}
+            {t('트레이닝', 'Training')}:{' '}
+            {formatPricePair(lang, pg.trainingCost, pg.trainingCostUSD)}
           </p>
           <p>
-            {t('옵션', 'Options')}: ₩{formatMoney(pg.optionsCost)}
+            {t('옵션', 'Options')}:{' '}
+            {formatPricePair(lang, pg.optionsCost, pg.optionsCostUSD)}
           </p>
           {pg.penaltyFee > 0 && (
             <p style={{ color: 'var(--danger)' }}>
@@ -241,8 +251,12 @@ export default function QuoteModal({
             </p>
           )}
           <p style={{ fontWeight: 900, fontSize: 18 }}>
-            {t('최종', 'Total')}: ₩{formatMoney(pg.individualTotalKRW)} / $
-            {formatMoney(pg.individualTotalUSD)}
+            {t('최종', 'Total')}:{' '}
+            {formatPricePair(
+              lang,
+              pg.individualTotalKRW,
+              pg.individualTotalUSD,
+            )}
           </p>
         </div>
 

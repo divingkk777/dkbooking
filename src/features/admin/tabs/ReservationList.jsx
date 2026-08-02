@@ -1,6 +1,6 @@
 import emailjs from '@emailjs/browser';
 import { useEffect, useMemo, useState } from 'react';
-import { formatMoney } from '../../../domain/pricing';
+import { formatMoney, formatPricePair } from '../../../domain/pricing';
 import { addAdminLog } from '../../../data/logsRepo';
 import { useToast } from '../../../ui/ToastContext';
 import {
@@ -48,14 +48,14 @@ function matchesSearch(row, term) {
   return haystack.includes(needle);
 }
 
-function buildInvoiceDetails(row, t) {
+function buildInvoiceDetails(row, t, lang = 'KO') {
   return [
     `${row.name} (${row.nationality || ''} ${row.level || ''})`.trim(),
     `${row.startDate || ''} ~ ${row.endDate || ''}`,
-    `${t('객실', 'Room')}: ₩${formatMoney(row.roomShareCost)}`,
-    `${t('트레이닝', 'Training')}: ₩${formatMoney(row.trainingCost)}`,
-    `${t('옵션', 'Options')}: ₩${formatMoney(row.optionsCost)}`,
-    `${t('합계', 'Total')}: ₩${formatMoney(row.individualTotalKRW)} / $${formatMoney(row.individualTotalUSD)}`,
+    `${t('객실', 'Room')}: ${formatPricePair(lang, row.roomShareCost, row.roomShareCostUSD)}`,
+    `${t('트레이닝', 'Training')}: ${formatPricePair(lang, row.trainingCost, row.trainingCostUSD)}`,
+    `${t('옵션', 'Options')}: ${formatPricePair(lang, row.optionsCost, row.optionsCostUSD)}`,
+    `${t('합계', 'Total')}: ${formatPricePair(lang, row.individualTotalKRW, row.individualTotalUSD)}`,
   ].join('\n');
 }
 
@@ -179,8 +179,8 @@ export default function ReservationList({
       await emailjs.send(serviceId, templateId, {
         to_email: row.repEmail,
         to_name: row.repName,
-        message: buildInvoiceDetails(row, t),
-        invoice_details: buildInvoiceDetails(row, t),
+        message: buildInvoiceDetails(row, t, lang),
+        invoice_details: buildInvoiceDetails(row, t, lang),
       });
       await addAdminLog({
         type: 'EDIT',
@@ -476,10 +476,11 @@ export default function ReservationList({
                         </div>
                       )}
                       <div style={{ fontWeight: 800, fontSize: 15 }}>
-                        ₩{formatMoney(finalTotal)}
-                      </div>
-                      <div style={{ fontWeight: 800, fontSize: 15, color: '#1d4ed8', marginTop: 2 }}>
-                        ${formatMoney(row.individualTotalUSD)}
+                        {formatPricePair(
+                          lang,
+                          finalTotal,
+                          row.individualTotalUSD,
+                        )}
                       </div>
                       {Number(row.customTotalKRW) > 0 ? (
                         <div style={{ fontSize: 11, color: '#e64980', fontWeight: 700, margin: '2px 0' }}>

@@ -7,7 +7,10 @@ import {
   HOTEL_INFO,
   STORAGE_KEYS,
 } from '../../domain/defaults';
-import { formatMoney, processRoomsData } from '../../domain/pricing';
+import {
+  formatPricePair,
+  processRoomsData,
+} from '../../domain/pricing';
 import { addAdminLog } from '../../data/logsRepo';
 import { createReservation } from '../../data/reservationsRepo';
 import { createTranslator } from '../../i18n/t';
@@ -129,6 +132,7 @@ export default function GuestApp({ settings }) {
         settings.exchangeRate,
         settings.roomTypesConfig,
         settings.trainingTypesConfig,
+        settings.optionPricesConfig,
       ),
     [roomsData, settings],
   );
@@ -403,7 +407,7 @@ export default function GuestApp({ settings }) {
         `🏨 [${t('호텔 안내', 'Hotel Info')}]`,
         `- ${t('주소', 'Address')}: ${HOTEL_INFO.name}, ${HOTEL_INFO.address}`,
         '',
-        `${t('합계', 'Total')}: ₩${formatMoney(payload.grandTotalKRW)} / $${formatMoney(payload.grandTotalUSD)}`,
+        `${t('합계', 'Total')}: ${formatPricePair(lang, payload.grandTotalKRW, payload.grandTotalUSD)}`,
       ].join('\n');
 
       try {
@@ -666,6 +670,7 @@ export default function GuestApp({ settings }) {
           setRoomsData={setRoomsData}
           roomTypes={settings.roomTypesConfig}
           trainingTypes={settings.trainingTypesConfig}
+          optionPrices={settings.optionPricesConfig}
           safetyInstructors={(settings.safetyInstructorsConfig || []).map(
             (s) => s.name || s,
           )}
@@ -707,8 +712,12 @@ export default function GuestApp({ settings }) {
               {t('개별 청구 내역서', 'Individual Billing Summary')}
             </strong>
             <p style={{ marginBottom: 0 }}>
-              {t('합계', 'Total')}: ₩{formatMoney(processed.grandTotalKRW)} / $
-              {formatMoney(processed.grandTotalUSD)}
+              {t('합계', 'Total')}:{' '}
+              {formatPricePair(
+                lang,
+                processed.grandTotalKRW,
+                processed.grandTotalUSD,
+              )}
             </p>
           </div>
 

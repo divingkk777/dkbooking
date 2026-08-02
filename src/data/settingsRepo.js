@@ -8,12 +8,14 @@ import {
   DEFAULT_TRAINING_TYPES,
   DEFAULT_UNITS,
   DEFAULT_VEHICLES,
+  resolveOptionPrices,
 } from '../domain/defaults';
 import { COLLECTIONS, SETTINGS_DOC, db } from '../lib/firebase';
 
 function normalizeSettings(data = {}) {
   return {
     exchangeRate: Number(data.exchangeRate) || DEFAULT_EXCHANGE_RATE,
+    optionPricesConfig: resolveOptionPrices(data.optionPricesConfig),
     roomTypesConfig: Array.isArray(data.roomTypesConfig)
       ? data.roomTypesConfig
       : DEFAULT_ROOM_TYPES,

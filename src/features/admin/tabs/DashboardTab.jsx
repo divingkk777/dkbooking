@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
-import { formatMoney } from '../../../domain/pricing';
+import { formatMoney, formatPricePair } from '../../../domain/pricing';
 
-export default function DashboardTab({ t, reservations }) {
+export default function DashboardTab({ t, lang = 'KO', reservations }) {
   const stats = useMemo(() => {
     let guests = 0;
     let newGuests = 0;
@@ -37,12 +37,15 @@ export default function DashboardTab({ t, reservations }) {
     { label: t('신규 미확인', 'New unchecked'), value: stats.newGuests },
     { label: t('취소 건', 'Cancelled'), value: stats.cancelled },
     {
-      label: t('합계 KRW', 'Total KRW'),
-      value: `₩${formatMoney(stats.totalKRW)}`,
+      label: t('합계', 'Total'),
+      value: formatPricePair(lang, stats.totalKRW, stats.totalUSD),
     },
     {
-      label: t('합계 USD', 'Total USD'),
-      value: `$${formatMoney(stats.totalUSD)}`,
+      label: t('합계 (보조)', 'Total (secondary)'),
+      value:
+        String(lang).toUpperCase() === 'EN'
+          ? `₩${formatMoney(stats.totalKRW)}`
+          : `$${formatMoney(stats.totalUSD)}`,
     },
   ];
 

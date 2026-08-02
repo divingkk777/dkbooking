@@ -329,6 +329,7 @@ export default function AdminApp({ settings }) {
                   settings.exchangeRate,
                   settings.roomTypesConfig,
                   settings.trainingTypesConfig,
+                  settings.optionPricesConfig,
                 );
                 await updateReservation(reservation.id, {
                   roomsData: next.processedRooms,
@@ -387,7 +388,11 @@ export default function AdminApp({ settings }) {
       )}
 
       {tab === 'DASHBOARD' && (
-        <DashboardTab t={t} reservations={visibleReservations} />
+        <DashboardTab
+          t={t}
+          lang={lang}
+          reservations={visibleReservations}
+        />
       )}
 
       {tab === 'ADS' && role !== 'INSTRUCTOR' && (
@@ -439,6 +444,7 @@ export default function AdminApp({ settings }) {
       {quoteTarget && (
         <QuoteModal
           t={t}
+          lang={lang}
           target={quoteTarget}
           reservations={reservations}
           settings={settings}

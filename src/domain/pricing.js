@@ -1,7 +1,6 @@
 import {
   DEFAULT_EXCHANGE_RATE,
-  OPTION_PRICES_KRW,
-  OPTION_PRICES_USD,
+  resolveOptionPrices,
 } from './defaults';
 
 export function formatMoney(value) {
@@ -9,10 +8,23 @@ export function formatMoney(value) {
   return Number(value).toLocaleString();
 }
 
-/** KO → ₩KRW, EN → $USD (fixed catalog amounts). */
+export function isEnglishLang(lang) {
+  return String(lang || '').toUpperCase() === 'EN';
+}
+
+/**
+ * KO: KRW first (₩… / $…)
+ * EN: USD first ($… / ₩…)
+ */
+export function formatPricePair(lang, priceKRW, priceUSD) {
+  const krw = `₩${formatMoney(priceKRW)}`;
+  const usd = `$${formatMoney(priceUSD)}`;
+  return isEnglishLang(lang) ? `${usd} / ${krw}` : `${krw} / ${usd}`;
+}
+
+/** Primary currency only (KO=₩, EN=$). */
 export function formatPriceLabel(lang, priceKRW, priceUSD) {
-  const isEn = String(lang || '').toUpperCase() === 'EN';
-  if (isEn) return `$${formatMoney(priceUSD)}`;
+  if (isEnglishLang(lang)) return `$${formatMoney(priceUSD)}`;
   return `₩${formatMoney(priceKRW)}`;
 }
 
@@ -42,14 +54,9 @@ export function buildStayOptionAutoAlert({
   guestCount,
   t,
 }) {
-  const isEn = String(lang || '').toUpperCase() === 'EN';
   const rates = roomNightlyRates(roomType, roomTypes, guestCount);
-  const money = isEn
-    ? `$${formatMoney(rates.usd)}`
-    : `₩${formatMoney(rates.krw)}`;
-  const share = isEn
-    ? `$${formatMoney(rates.shareUsd)}`
-    : `₩${formatMoney(rates.shareKrw)}`;
+  const money = formatPriceLabel(lang, rates.krw, rates.usd);
+  const share = formatPriceLabel(lang, rates.shareKrw, rates.shareUsd);
 
   if (kind === 'early') {
     const title = t('⏰ [얼리체크인 자동 선택]', '⏰ [Early Check-in Auto-selected]');
@@ -180,6 +187,7 @@ export function processRoomsData(
   exchangeRate = DEFAULT_EXCHANGE_RATE,
   roomTypes = [],
   trainingTypes = [],
+  optionPricesConfig,
 ) {
   if (!Array.isArray(roomsData)) {
     return { processedRooms: [], grandTotalKRW: 0, grandTotalUSD: 0 };
@@ -188,6 +196,7 @@ export function processRoomsData(
   let grandTotalKRW = 0;
   let grandTotalUSD = 0;
   const rate = Number(exchangeRate) || DEFAULT_EXCHANGE_RATE;
+  const optionPrices = resolveOptionPrices(optionPricesConfig);
 
   const processedRooms = roomsData.map((room) => {
     const roomType = room.roomType || 'NONE';
@@ -224,25 +233,25 @@ export function processRoomsData(
         let optionsCost = 0;
         let optionsCostUSD = 0;
         if (guest.airportPickup) {
-          optionsCost += OPTION_PRICES_KRW.TRANSFER;
-          optionsCostUSD += OPTION_PRICES_USD.TRANSFER;
+          optionsCost += optionPrices.TRANSFER.krw;
+          optionsCostUSD += optionPrices.TRANSFER.usd;
         }
         if (guest.airportDropoff) {
-          optionsCost += OPTION_PRICES_KRW.TRANSFER;
-          optionsCostUSD += OPTION_PRICES_USD.TRANSFER;
+          optionsCost += optionPrices.TRANSFER.krw;
+          optionsCostUSD += optionPrices.TRANSFER.usd;
         }
         if (guest.needsVideo) {
-          optionsCost += OPTION_PRICES_KRW.VIDEO_PER_DAY * training.divingDays;
+          optionsCost += optionPrices.VIDEO_PER_DAY.krw * training.divingDays;
           optionsCostUSD +=
-            OPTION_PRICES_USD.VIDEO_PER_DAY * training.divingDays;
+            optionPrices.VIDEO_PER_DAY.usd * training.divingDays;
         }
         if ((guest.islandHopping || 0) > 0) {
-          optionsCost += OPTION_PRICES_KRW.HOPPING * guest.islandHopping;
-          optionsCostUSD += OPTION_PRICES_USD.HOPPING * guest.islandHopping;
+          optionsCost += optionPrices.HOPPING.krw * guest.islandHopping;
+          optionsCostUSD += optionPrices.HOPPING.usd * guest.islandHopping;
         }
         if ((guest.funDiving || 0) > 0) {
-          optionsCost += OPTION_PRICES_KRW.FUN_DIVING * guest.funDiving;
-          optionsCostUSD += OPTION_PRICES_USD.FUN_DIVING * guest.funDiving;
+          optionsCost += optionPrices.FUN_DIVING.krw * guest.funDiving;
+          optionsCostUSD += optionPrices.FUN_DIVING.usd * guest.funDiving;
         }
 
         const penaltyFee = Number(guest.penaltyFee) || 0;

@@ -48,6 +48,60 @@ export const OPTION_PRICES_USD = {
   FUN_DIVING: 30,
 };
 
+/** Editable in Settings → optionPricesConfig */
+export const DEFAULT_OPTION_PRICES = {
+  TRANSFER: {
+    id: 'TRANSFER',
+    nameKO: '공항 픽업/드롭오프',
+    nameEN: 'Airport Transfer',
+    krw: OPTION_PRICES_KRW.TRANSFER,
+    usd: OPTION_PRICES_USD.TRANSFER,
+    unitKO: '회',
+    unitEN: 'x',
+  },
+  VIDEO_PER_DAY: {
+    id: 'VIDEO_PER_DAY',
+    nameKO: '영상 촬영',
+    nameEN: 'Video',
+    krw: OPTION_PRICES_KRW.VIDEO_PER_DAY,
+    usd: OPTION_PRICES_USD.VIDEO_PER_DAY,
+    unitKO: '일',
+    unitEN: 'day',
+  },
+  HOPPING: {
+    id: 'HOPPING',
+    nameKO: '아일랜드 호핑',
+    nameEN: 'Island Hopping',
+    krw: OPTION_PRICES_KRW.HOPPING,
+    usd: OPTION_PRICES_USD.HOPPING,
+    unitKO: '회',
+    unitEN: 'x',
+  },
+  FUN_DIVING: {
+    id: 'FUN_DIVING',
+    nameKO: '펀다이빙',
+    nameEN: 'Fun Diving',
+    krw: OPTION_PRICES_KRW.FUN_DIVING,
+    usd: OPTION_PRICES_USD.FUN_DIVING,
+    unitKO: '회',
+    unitEN: 'x',
+  },
+};
+
+export function resolveOptionPrices(config) {
+  const out = {};
+  for (const key of Object.keys(DEFAULT_OPTION_PRICES)) {
+    const def = DEFAULT_OPTION_PRICES[key];
+    const row = config && typeof config === 'object' ? config[key] : null;
+    out[key] = {
+      ...def,
+      krw: Number(row?.krw ?? row?.priceKRW ?? def.krw) || 0,
+      usd: Number(row?.usd ?? row?.priceUSD ?? def.usd) || 0,
+    };
+  }
+  return out;
+}
+
 export const DIVER_LEVELS = ['LEVEL_1', 'LEVEL_2', 'LEVEL_3', 'LEVEL_4', 'INSTRUCTOR'];
 
 /** Freediving disciplines selectable in booking step 2 */

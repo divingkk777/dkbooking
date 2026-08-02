@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react';
+import {
+  DEFAULT_OPTION_PRICES,
+  resolveOptionPrices,
+} from '../../../domain/defaults';
 import { formatMoney } from '../../../domain/pricing';
 import { useToast } from '../../../ui/ToastContext';
 
@@ -43,6 +47,9 @@ export default function SettingsTab({
   const isFullAdmin = String(role || '').toUpperCase() === 'ADMIN';
 
   const [exchangeRate, setExchangeRate] = useState(settings.exchangeRate);
+  const [optionPrices, setOptionPrices] = useState(() =>
+    resolveOptionPrices(settings.optionPricesConfig),
+  );
   const [trainingTypes, setTrainingTypes] = useState(() =>
     structuredClone(settings.trainingTypesConfig || []),
   );
@@ -103,6 +110,7 @@ export default function SettingsTab({
 
   useEffect(() => {
     setExchangeRate(settings.exchangeRate);
+    setOptionPrices(resolveOptionPrices(settings.optionPricesConfig));
     setTrainingTypes(structuredClone(settings.trainingTypesConfig || []));
     setRoomTypes(structuredClone(settings.roomTypesConfig || []));
     setAccounts(structuredClone(settings.accountsConfig || []));
@@ -115,6 +123,13 @@ export default function SettingsTab({
     setAdminId2(settings.adminId2 || '');
     setAdminPassword2(settings.adminPassword2 || '');
   }, [settings]);
+
+  const updateOptionPrice = (key, patch) => {
+    setOptionPrices((prev) => ({
+      ...prev,
+      [key]: { ...prev[key], ...patch },
+    }));
+  };
 
   const save = async (partial, okMsg) => {
     try {
@@ -386,6 +401,81 @@ export default function SettingsTab({
           </button>
         </div>
       </div>
+
+      <ManagerCard
+        color="#f59f00"
+        title={`💰 ${t('옵션 고정 금액 설정', 'Fixed Option Prices')}`}
+        hint={t(
+          '한글 모드에서는 원화 우선, 영어 모드에서는 달러 우선으로 표시됩니다. 예약 계산에도 이 값이 사용됩니다.',
+          'KO shows KRW first, EN shows USD first. These values are used in booking totals.',
+        )}
+        footer={
+          <button
+            type="button"
+            className="btn-primary"
+            style={{ marginTop: 14, backgroundColor: '#f59f00' }}
+            onClick={() =>
+              save(
+                { optionPricesConfig: resolveOptionPrices(optionPrices) },
+                t('옵션 금액이 저장되었습니다.', 'Option prices saved.'),
+              )
+            }
+          >
+            💾 {t('옵션 금액 저장', 'Save Option Prices')}
+          </button>
+        }
+      >
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr style={{ backgroundColor: '#fff3bf', color: '#e67700' }}>
+                <th>{t('옵션', 'Option')}</th>
+                <th>{t('단위', 'Unit')}</th>
+                <th>{t('금액 (₩)', 'Price (KRW)')}</th>
+                <th>{t('금액 ($)', 'Price (USD)')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.keys(DEFAULT_OPTION_PRICES).map((key) => {
+                const row = optionPrices[key] || DEFAULT_OPTION_PRICES[key];
+                return (
+                  <tr key={key}>
+                    <td>
+                      <b>{t(row.nameKO, row.nameEN)}</b>
+                      <div style={{ fontSize: 11, color: '#8b95a1' }}>{key}</div>
+                    </td>
+                    <td>{t(row.unitKO, row.unitEN)}</td>
+                    <td>
+                      <input
+                        type="number"
+                        className="input-field"
+                        value={row.krw ?? 0}
+                        onChange={(e) =>
+                          updateOptionPrice(key, {
+                            krw: Number(e.target.value) || 0,
+                          })
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        className="input-field"
+                        value={row.usd ?? 0}
+                        onChange={(e) =>
+                          updateOptionPrice(key, {
+                            usd: Number(e.target.value) || 0,
+                          })
+                        }
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </ManagerCard>
 
       <ManagerCard
         color="#0ca678"

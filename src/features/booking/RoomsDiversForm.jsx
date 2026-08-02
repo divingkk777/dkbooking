@@ -6,13 +6,12 @@ import {
   HOUR_OPTIONS,
   maxGuestsForRoomType,
   normalizeHourTime,
-  OPTION_PRICES_KRW,
-  OPTION_PRICES_USD,
+  resolveOptionPrices,
 } from '../../domain/defaults';
 import { toLocalISODate } from '../../domain/dateUtils';
 import {
   buildStayOptionAutoAlert,
-  formatPriceLabel,
+  formatPricePair,
 } from '../../domain/pricing';
 import { useToast } from '../../ui/ToastContext';
 
@@ -53,12 +52,14 @@ export default function RoomsDiversForm({
   setRoomsData,
   roomTypes,
   trainingTypes,
+  optionPrices: optionPricesProp,
   safetyInstructors = [],
   processed,
 }) {
   const toast = useToast();
   const today = toLocalISODate();
-  const price = (krw, usd) => formatPriceLabel(lang, krw, usd);
+  const optionPrices = resolveOptionPrices(optionPricesProp);
+  const price = (krw, usd) => formatPricePair(lang, krw, usd);
   const [sameMode, setSameMode] = useState({});
   const [detailsOpen, setDetailsOpen] = useState({});
 
@@ -733,8 +734,8 @@ export default function RoomsDiversForm({
                         />
                         {t('공항 픽업', 'Airport Pickup')} (
                         {price(
-                          OPTION_PRICES_KRW.TRANSFER,
-                          OPTION_PRICES_USD.TRANSFER,
+                          optionPrices.TRANSFER.krw,
+                          optionPrices.TRANSFER.usd,
                         )}
                         )
                       </label>
@@ -795,8 +796,8 @@ export default function RoomsDiversForm({
                         />
                         {t('공항 드롭오프', 'Airport Dropoff')} (
                         {price(
-                          OPTION_PRICES_KRW.TRANSFER,
-                          OPTION_PRICES_USD.TRANSFER,
+                          optionPrices.TRANSFER.krw,
+                          optionPrices.TRANSFER.usd,
                         )}
                         )
                       </label>
@@ -858,15 +859,15 @@ export default function RoomsDiversForm({
                       />
                       {t('영상 촬영', 'Video')} (
                       {price(
-                        OPTION_PRICES_KRW.VIDEO_PER_DAY,
-                        OPTION_PRICES_USD.VIDEO_PER_DAY,
+                        optionPrices.VIDEO_PER_DAY.krw,
+                        optionPrices.VIDEO_PER_DAY.usd,
                       )}
                       /{t('일', 'day')})
                     </label>
                     <Field
                       label={`${t('아일랜드 호핑 횟수', 'Island Hopping')} (${price(
-                        OPTION_PRICES_KRW.HOPPING,
-                        OPTION_PRICES_USD.HOPPING,
+                        optionPrices.HOPPING.krw,
+                        optionPrices.HOPPING.usd,
                       )}/${t('회', 'x')})`}
                     >
                       <input
@@ -886,8 +887,8 @@ export default function RoomsDiversForm({
                     </Field>
                     <Field
                       label={`${t('펀다이빙 횟수', 'Fun Diving')} (${price(
-                        OPTION_PRICES_KRW.FUN_DIVING,
-                        OPTION_PRICES_USD.FUN_DIVING,
+                        optionPrices.FUN_DIVING.krw,
+                        optionPrices.FUN_DIVING.usd,
                       )}/${t('회', 'x')})`}
                     >
                       <input
