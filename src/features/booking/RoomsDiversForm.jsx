@@ -10,6 +10,7 @@ import {
 } from '../../domain/defaults';
 import { toLocalISODate } from '../../domain/dateUtils';
 import {
+  buildRoomShareAlert,
   buildStayOptionAutoAlert,
   formatPricePair,
 } from '../../domain/pricing';
@@ -228,20 +229,39 @@ export default function RoomsDiversForm({
     );
   };
 
-  const setGuestCount = (roomIdx, count, roomTypeOverride) => {
+  const setGuestCount = (
+    roomIdx,
+    count,
+    roomTypeOverride,
+    { notifyShare = false } = {},
+  ) => {
+    const room = roomsData[roomIdx];
+    const roomType =
+      roomTypeOverride !== undefined ? roomTypeOverride : room?.roomType;
+    const max = maxGuestsForRoomType(roomType, roomTypes);
+    const n = Math.max(1, Math.min(max, Number(count) || 1));
+
     setRoomsData((prev) =>
-      prev.map((room, i) => {
-        if (i !== roomIdx) return room;
-        const roomType =
-          roomTypeOverride !== undefined ? roomTypeOverride : room.roomType;
-        const max = maxGuestsForRoomType(roomType, roomTypes);
-        const n = Math.max(1, Math.min(max, Number(count) || 1));
-        const guests = [...(room.guests || [])];
+      prev.map((r, i) => {
+        if (i !== roomIdx) return r;
+        const guests = [...(r.guests || [])];
         while (guests.length < n) guests.push(createEmptyGuest());
         while (guests.length > n) guests.pop();
-        return { ...room, roomType, guestCount: n, guests };
+        return { ...r, roomType, guestCount: n, guests };
       }),
     );
+
+    if (notifyShare) {
+      window.alert(
+        buildRoomShareAlert({
+          lang,
+          guestCount: n,
+          roomType,
+          roomTypes,
+          t,
+        }),
+      );
+    }
   };
 
   const changeRoomType = (roomIdx, nextType) => {
@@ -255,7 +275,25 @@ export default function RoomsDiversForm({
         ),
       );
     }
-    setGuestCount(roomIdx, Math.min(current, max), nextType);
+    setGuestCount(roomIdx, Math.min(current, max), nextType, {
+      notifyShare: false,
+    });
+  };
+
+  const notifyStayOption = (kind, roomIdx, time, auto = true) => {
+    const room = roomsData[roomIdx];
+    window.alert(
+      buildStayOptionAutoAlert({
+        lang,
+        kind,
+        time,
+        roomType: room?.roomType,
+        roomTypes,
+        guestCount: room?.guests?.length || 1,
+        t,
+        auto,
+      }),
+    );
   };
 
   return (
@@ -300,7 +338,11 @@ export default function RoomsDiversForm({
                     room.guestCount || room.guests?.length || 1,
                     maxGuests,
                   )}
-                  onChange={(e) => setGuestCount(roomIdx, e.target.value)}
+                  onChange={(e) =>
+                    setGuestCount(roomIdx, e.target.value, undefined, {
+                      notifyShare: true,
+                    })
+                  }
                 >
                   {guestOptions.map((n) => (
                     <option key={n} value={n}>
@@ -607,14 +649,23 @@ export default function RoomsDiversForm({
                           <input
                             type="checkbox"
                             checked={!!guest.dawnCheckIn}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              const on = e.target.checked;
                               updateGuest(
                                 roomIdx,
                                 guestIdx,
                                 'dawnCheckIn',
-                                e.target.checked,
-                              )
-                            }
+                                on,
+                              );
+                              if (on) {
+                                notifyStayOption(
+                                  'early',
+                                  roomIdx,
+                                  guest.checkInTime,
+                                  false,
+                                );
+                              }
+                            }}
                           />
                           {t('얼리체크인 (+1박)', 'Early Check-in (+1n)')}
                         </label>
@@ -624,14 +675,23 @@ export default function RoomsDiversForm({
                           <input
                             type="checkbox"
                             checked={!!guest.lateCheckOut}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              const on = e.target.checked;
                               updateGuest(
                                 roomIdx,
                                 guestIdx,
                                 'lateCheckOut',
-                                e.target.checked,
-                              )
-                            }
+                                on,
+                              );
+                              if (on) {
+                                notifyStayOption(
+                                  'late',
+                                  roomIdx,
+                                  guest.checkOutTime,
+                                  false,
+                                );
+                              }
+                            }}
                           />
                           {t('레이트 체크아웃 (+1박)', 'Late Check-out (+1n)')}
                         </label>

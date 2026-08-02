@@ -44,7 +44,7 @@ export function roomNightlyRates(roomType, roomTypes = [], guestCount = 1) {
   };
 }
 
-/** Popup copy when early/late stay option auto-applies. */
+/** Popup copy when early/late stay option applies (auto or manual). */
 export function buildStayOptionAutoAlert({
   lang,
   kind, // 'early' | 'late'
@@ -53,51 +53,88 @@ export function buildStayOptionAutoAlert({
   roomTypes,
   guestCount,
   t,
+  auto = true,
 }) {
   const rates = roomNightlyRates(roomType, roomTypes, guestCount);
-  const money = formatPriceLabel(lang, rates.krw, rates.usd);
-  const share = formatPriceLabel(lang, rates.shareKrw, rates.shareUsd);
+  const money = formatPricePair(lang, rates.krw, rates.usd);
+  const share = formatPricePair(lang, rates.shareKrw, rates.shareUsd);
+  const n = Math.max(1, Number(guestCount) || 1);
 
   if (kind === 'early') {
-    const title = t('⏰ [얼리체크인 자동 선택]', '⏰ [Early Check-in Auto-selected]');
+    const title = auto
+      ? t('⏰ [얼리체크인 자동 선택]', '⏰ [Early Check-in Auto-selected]')
+      : t('⏰ [얼리체크인 안내]', '⏰ [Early Check-in Notice]');
     const cond = t(
       '조건: 체크인 시간이 12:00 이전(00:00~11:00)이면 얼리체크인(+1박)이 적용됩니다.',
       'Condition: Check-in before 12:00 (00:00–11:00) applies Early Check-in (+1 night).',
     );
-    const selected = t(`선택 시간: ${time}`, `Selected time: ${time}`);
+    const how = t(
+      '추가 방식: 숙박 박수에 +1박이 더해지며, 객실 1박 정가가 추가 청구됩니다.',
+      'How charged: +1 night is added to stay nights, billed at the room’s nightly rate.',
+    );
+    const selected = time
+      ? t(`선택 시간: ${time}`, `Selected time: ${time}`)
+      : '';
     const fee =
       rates.krw > 0 || rates.usd > 0
         ? t(
-            `추가 금액: ${money} (객실 1박) · 1인 분담 약 ${share}`,
-            `Extra charge: ${money} (1 room night) · ~${share} per person`,
+            `추가 금액: ${money} (객실 1박 정가)\n룸쉐어(${n}인): 1인 약 ${share}`,
+            `Extra: ${money} (1 room night)\nRoom-share (${n} pax): ~${share} each`,
           )
         : t(
             '추가 금액: 객실 미사용(다이빙만)인 경우 숙박 추가금 없음',
             'Extra charge: none when No Room (diving only) is selected',
           );
-    return `${title}\n${cond}\n${selected}\n${fee}`;
+    return [title, cond, how, selected, fee].filter(Boolean).join('\n');
   }
 
-  const title = t(
-    '⏰ [레이트 체크아웃 자동 선택]',
-    '⏰ [Late Check-out Auto-selected]',
-  );
+  const title = auto
+    ? t('⏰ [레이트 체크아웃 자동 선택]', '⏰ [Late Check-out Auto-selected]')
+    : t('⏰ [레이트 체크아웃 안내]', '⏰ [Late Check-out Notice]');
   const cond = t(
     '조건: 체크아웃 시간이 13:00 이후이면 레이트 체크아웃(+1박)이 적용됩니다.',
     'Condition: Check-out at 13:00 or later applies Late Check-out (+1 night).',
   );
-  const selected = t(`선택 시간: ${time}`, `Selected time: ${time}`);
+  const how = t(
+    '추가 방식: 숙박 박수에 +1박이 더해지며, 객실 1박 정가가 추가 청구됩니다.',
+    'How charged: +1 night is added to stay nights, billed at the room’s nightly rate.',
+  );
+  const selected = time
+    ? t(`선택 시간: ${time}`, `Selected time: ${time}`)
+    : '';
   const fee =
     rates.krw > 0 || rates.usd > 0
       ? t(
-          `추가 금액: ${money} (객실 1박) · 1인 분담 약 ${share}`,
-          `Extra charge: ${money} (1 room night) · ~${share} per person`,
+          `추가 금액: ${money} (객실 1박 정가)\n룸쉐어(${n}인): 1인 약 ${share}`,
+          `Extra: ${money} (1 room night)\nRoom-share (${n} pax): ~${share} each`,
         )
       : t(
           '추가 금액: 객실 미사용(다이빙만)인 경우 숙박 추가금 없음',
           'Extra charge: none when No Room (diving only) is selected',
         );
-  return `${title}\n${cond}\n${selected}\n${fee}`;
+  return [title, cond, how, selected, fee].filter(Boolean).join('\n');
+}
+
+/** Popup when diver count is selected. */
+export function buildRoomShareAlert({ lang, guestCount, roomType, roomTypes, t }) {
+  const n = Math.max(1, Number(guestCount) || 1);
+  const rates = roomNightlyRates(roomType, roomTypes, n);
+  const money = formatPricePair(lang, rates.krw, rates.usd);
+  const share = formatPricePair(lang, rates.shareKrw, rates.shareUsd);
+
+  const title = t('🛏️ [룸쉐어 요금 안내]', '🛏️ [Room-share Pricing Notice]');
+  const body = t(
+    '룸쉐어 시 1/n으로 룸가격이 나눠지며, 1인실이 되는날은 1인실 가격으로 청구됩니다.',
+    'For room-share, the room rate is split 1/n. Days that become a single room are charged at the single-room rate.',
+  );
+  const detail =
+    rates.krw > 0 || rates.usd > 0
+      ? t(
+          `현재 선택: ${n}명\n객실 1박 정가: ${money}\n1인 분담(1/${n}): 약 ${share}`,
+          `Selected: ${n} divers\nRoom night: ${money}\nPer person (1/${n}): ~${share}`,
+        )
+      : t(`현재 선택: ${n}명`, `Selected: ${n} divers`);
+  return `${title}\n${body}\n${detail}`;
 }
 
 function nightsBetween(startDate, endDate) {
