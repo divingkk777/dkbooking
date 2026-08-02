@@ -8,7 +8,8 @@ export const DEFAULT_ROOM_TYPES = [
 
 /** King+Single → 3, other rooms → 2, diving-only (NONE) → 4 */
 export function maxGuestsForRoomType(roomType, roomTypes = []) {
-  if (!roomType || roomType === 'NONE') return 4;
+  if (!roomType) return 2;
+  if (roomType === 'NONE') return 4;
   const cfg = (roomTypes || []).find((r) => r.id === roomType);
   const blob = [roomType, cfg?.id, cfg?.nameKO, cfg?.nameEN, cfg?.name]
     .filter(Boolean)
