@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
+  LIVE_LOG_LIMIT,
   LOG_CATEGORY_META,
   resolveLogCategory,
 } from '../../../data/logsRepo';
@@ -13,10 +14,12 @@ export default function LogsArchiveTab({
   trashed,
   onToggleRead,
   onMarkRead,
+  onMarkAllRead,
   onRestore,
   onEmptyTrash,
 }) {
   const [category, setCategory] = useState('ALL');
+  const [markingAll, setMarkingAll] = useState(false);
   const items = logs || [];
 
   const filtered = useMemo(() => {
@@ -32,6 +35,18 @@ export default function LogsArchiveTab({
       return;
     }
     if (!log.isRead) onMarkRead?.(log.id);
+  };
+
+  const markAllRead = async () => {
+    if (!onMarkAllRead || unreadCount === 0 || markingAll) return;
+    setMarkingAll(true);
+    try {
+      await onMarkAllRead(
+        items.filter((l) => !l.isRead).map((l) => l.id),
+      );
+    } finally {
+      setMarkingAll(false);
+    }
   };
 
   if (mode === 'ARCHIVE') {
@@ -120,7 +135,24 @@ export default function LogsArchiveTab({
             </span>
           )}
         </h3>
+        <button
+          type="button"
+          className="btn-secondary"
+          style={{ width: 'auto', minWidth: 96 }}
+          disabled={unreadCount === 0 || markingAll || !onMarkAllRead}
+          onClick={markAllRead}
+        >
+          {markingAll
+            ? t('처리 중…', 'Working…')
+            : t('모두읽음', 'Mark all read')}
+        </button>
       </div>
+      <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--muted)' }}>
+        {t(
+          `최근 ${LIVE_LOG_LIMIT}건만 표시합니다. 초과분은 묶음 보관소로 옮기며 화면에는 불러오지 않습니다.`,
+          `Showing the latest ${LIVE_LOG_LIMIT} only. Older logs are bundled into archive storage and not loaded here.`,
+        )}
+      </p>
 
       <div className="log-filter-row">
         {FILTERS.map((key) => {
@@ -178,6 +210,7 @@ export default function LogsArchiveTab({
                     {t(catMeta.ko, catMeta.en)}
                   </span>
                   <span>
+                    {log.actor ? `${log.actor} · ` : ''}
                     {log.type || '-'} · {log.createdAt}
                   </span>
                 </div>

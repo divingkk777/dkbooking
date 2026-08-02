@@ -352,6 +352,18 @@ export const STORAGE_KEYS = {
 
 export const DEFAULT_GROUP_PIN = '1111';
 
+/** Live input filter: strip Hangul/symbols, keep spaces while typing. */
+export function filterPassportEnglishInput(value) {
+  return String(value || '')
+    .replace(/[^a-zA-Z\s]/g, '')
+    .toUpperCase();
+}
+
+/** Normalized passport English name (letters + single spaces). */
+export function toPassportEnglishName(value) {
+  return filterPassportEnglishInput(value).replace(/\s+/g, ' ').trim();
+}
+
 export function createEmptyRoom(id = 1) {
   return {
     id,
@@ -361,12 +373,70 @@ export function createEmptyRoom(id = 1) {
   };
 }
 
+/** @deprecated use SUPER_ADMIN_EMAIL from adminRoles — kept for settingsRepo import. */
 export const BOOTSTRAP_ADMINS = {
-  adminId1: 'admin1',
+  adminId1: 'doublek777@gmail.com',
   adminPassword1: '7777',
   adminId2: 'admin2',
   adminPassword2: '9999',
+  adminsConfig: [],
 };
+
+const WEAK_PINS = new Set([
+  '0000',
+  '1111',
+  '2222',
+  '3333',
+  '4444',
+  '5555',
+  '6666',
+  '7777',
+  '8888',
+  '9999',
+  '1234',
+  '4321',
+  '0123',
+  '9876',
+]);
+
+function randomInt(max) {
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const buf = new Uint32Array(1);
+    crypto.getRandomValues(buf);
+    return buf[0] % max;
+  }
+  return Math.floor(Math.random() * max);
+}
+
+/** Random 4-digit PIN (avoids trivial sequences). */
+export function generateFourDigitPin() {
+  for (let i = 0; i < 40; i += 1) {
+    const pin = String(randomInt(10000)).padStart(4, '0');
+    if (!WEAK_PINS.has(pin)) return pin;
+  }
+  return String(1000 + randomInt(9000));
+}
+
+/**
+ * Random login id, e.g. dk-a7f3k2.
+ * @param {string} [prefix]
+ * @param {string[]} [exclude]
+ */
+export function generateLoginId(prefix = 'dk', exclude = []) {
+  const alphabet = 'abcdefghijkmnpqrstuvwxyz23456789';
+  const blocked = new Set(
+    (exclude || []).map((x) => String(x || '').trim().toLowerCase()),
+  );
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    let suffix = '';
+    for (let i = 0; i < 6; i += 1) {
+      suffix += alphabet[randomInt(alphabet.length)];
+    }
+    const id = `${prefix}-${suffix}`;
+    if (!blocked.has(id.toLowerCase())) return id;
+  }
+  return `${prefix}-${Date.now().toString(36).slice(-6)}`;
+}
 
 export const DEFAULT_UNITS = [
   { id: 'u1', nameKO: '트라이마란', nameEN: 'Trimaran', lines: 4, isActive: true },

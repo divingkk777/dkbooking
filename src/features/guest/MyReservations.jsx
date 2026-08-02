@@ -1049,7 +1049,7 @@ export default function MyReservations({ settings }) {
 
   return (
     <div className="app-shell">
-      <RollingBanner ads={settings?.adsConfig} />
+      <RollingBanner ads={settings?.adsConfig} lang={lang} />
       <GuestTopBar
         t={t}
         lang={lang}

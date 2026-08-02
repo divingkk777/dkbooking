@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   emptyTrash,
   moveToTrash,
@@ -12,11 +12,24 @@ import {
 } from '../../data/reservationsRepo';
 import {
   addAdminLog,
+  archiveOverflowLogs,
   setLogRead,
+  markLogsReadByIds,
   subscribeLogs,
 } from '../../data/logsRepo';
 import BrandLockup from '../../components/BrandLockup';
 import { patchSettings } from '../../data/settingsRepo';
+import {
+  ADMIN_ROLES,
+  canAccessSettings,
+  findGeneralAdmin,
+  isInstructorRole,
+  isStaffAdmin,
+  isSuperAdmin,
+  isSuperAdminIdentity,
+  SUPER_ADMIN_EMAIL,
+} from '../../domain/adminRoles';
+// canAccessSettings = staff (settings tab); admin-account manager stays super-only in SettingsTab
 import { STORAGE_KEYS } from '../../domain/defaults';
 import { toLocalISODate } from '../../domain/dateUtils';
 import { removeGuestFromRooms } from '../../domain/listModel';
@@ -47,12 +60,20 @@ const TABS = [
   { id: 'SETTINGS', emoji: '⚙️', ko: '설정', en: 'Settings' },
 ];
 
+const TAB_IDS = new Set(TABS.map((x) => x.id));
+
 function todayISO() {
   return toLocalISODate();
 }
 
+function parseAdminTab(raw) {
+  const id = String(raw || '').toUpperCase();
+  return TAB_IDS.has(id) ? id : 'LIST';
+}
+
 export default function AdminApp({ settings }) {
   const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [lang, setLang] = useState(
     () => localStorage.getItem('admin_lang') || 'KO',
   );
@@ -72,13 +93,32 @@ export default function AdminApp({ settings }) {
     }
     return '';
   });
-  const [role, setRole] = useState(
-    () => sessionStorage.getItem('dk_admin_role') || '',
-  );
   const [actor, setActor] = useState(
     () => sessionStorage.getItem('dk_admin_actor') || '',
   );
-  const [tab, setTab] = useState('LIST');
+  const [role, setRole] = useState(() => {
+    const stored = sessionStorage.getItem('dk_admin_role') || '';
+    const storedActor = sessionStorage.getItem('dk_admin_actor') || '';
+    if (isSuperAdminIdentity(storedActor)) {
+      return ADMIN_ROLES.SUPER_ADMIN;
+    }
+    if (stored === 'ADMIN_TIER1') return ADMIN_ROLES.ADMIN;
+    if (stored === 'ADMIN') return ADMIN_ROLES.ADMIN;
+    if (stored === 'SUPER_ADMIN') return ADMIN_ROLES.SUPER_ADMIN;
+    return stored;
+  });
+  const tab = role ? parseAdminTab(searchParams.get('tab')) : 'LIST';
+  const selectTab = (id, { replace = false } = {}) => {
+    const next = parseAdminTab(id);
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.set('tab', next);
+        return p;
+      },
+      { replace },
+    );
+  };
   const [reservations, setReservations] = useState([]);
   const [trashed, setTrashed] = useState([]);
   const [logs, setLogs] = useState([]);
@@ -113,13 +153,14 @@ export default function AdminApp({ settings }) {
     purgeExpiredTrash(30).catch(() => {
       /* best-effort auto-purge */
     });
+    // Keep live logs ≤ 300; older bundles go to admin_logs_archive (not loaded).
+    archiveOverflowLogs().catch(() => {
+      /* best-effort */
+    });
   }, [role]);
 
   const login = () => {
-    const id1 = settings.adminId1;
-    const pw1 = settings.adminPassword1;
-    const id2 = settings.adminId2;
-    const pw2 = settings.adminPassword2;
+    const pw1 = String(settings.adminPassword1 || '');
     const u = username.trim();
     const persistRemember = () => {
       if (rememberLogin && u) {
@@ -132,36 +173,55 @@ export default function AdminApp({ settings }) {
         localStorage.removeItem(STORAGE_KEYS.adminPin);
       }
     };
-    if (u === id1 && pin === pw1) {
+    const enter = (nextRole, labelKo, labelEn) => {
       persistRemember();
-      setRole('ADMIN');
+      setRole(nextRole);
       setActor(u);
-      sessionStorage.setItem('dk_admin_role', 'ADMIN');
+      sessionStorage.setItem('dk_admin_role', nextRole);
       sessionStorage.setItem('dk_admin_actor', u);
-      toast.success(t('최고 관리자 로그인', 'Full Admin Mode'));
+      toast.success(t(labelKo, labelEn));
+    };
+
+    // Super admin: fixed email (or legacy admin1) + PIN from settings
+    if (isSuperAdminIdentity(u) && String(pin) === pw1) {
+      enter(
+        ADMIN_ROLES.SUPER_ADMIN,
+        '최고 관리자 로그인',
+        'Super Admin Mode',
+      );
       return;
     }
-    if (u === id2 && pin === pw2) {
-      persistRemember();
-      setRole('ADMIN_TIER1');
-      setActor(u);
-      sessionStorage.setItem('dk_admin_role', 'ADMIN_TIER1');
-      sessionStorage.setItem('dk_admin_actor', u);
-      toast.success(t('1등급 관리자 로그인', 'Tier 1 Admin Mode'));
+
+    const general = findGeneralAdmin(settings.adminsConfig, u, pin);
+    if (general) {
+      enter(ADMIN_ROLES.ADMIN, '관리자 로그인', 'Admin Mode');
       return;
     }
+
+    // Legacy single admin2 slot (until migrated into adminsConfig)
+    const id2 = String(settings.adminId2 || '').trim();
+    const pw2 = String(settings.adminPassword2 || '');
+    if (
+      id2 &&
+      u.toLowerCase() === id2.toLowerCase() &&
+      String(pin) === pw2 &&
+      id2.toLowerCase() !== SUPER_ADMIN_EMAIL.toLowerCase()
+    ) {
+      enter(ADMIN_ROLES.ADMIN, '관리자 로그인', 'Admin Mode');
+      return;
+    }
+
     const instructorHit = reservations.find(
       (r) =>
         (r.bookingInstructor || '').trim() === u &&
         String(r.groupPin || '') === pin,
     );
     if (instructorHit) {
-      persistRemember();
-      setRole('INSTRUCTOR');
-      setActor(u);
-      sessionStorage.setItem('dk_admin_role', 'INSTRUCTOR');
-      sessionStorage.setItem('dk_admin_actor', u);
-      toast.success(t('강사/예약자 보기', 'Holder View'));
+      enter(
+        ADMIN_ROLES.INSTRUCTOR,
+        '강사/예약자 보기',
+        'Holder View',
+      );
       return;
     }
     toast.error(t('로그인 정보가 올바르지 않습니다.', 'Invalid credentials.'));
@@ -175,13 +235,30 @@ export default function AdminApp({ settings }) {
   };
 
   const visibleReservations = useMemo(() => {
-    if (role === 'INSTRUCTOR') {
+    if (isInstructorRole(role)) {
       return reservations.filter(
         (r) => (r.bookingInstructor || '').trim() === actor,
       );
     }
     return reservations;
   }, [reservations, role, actor]);
+
+  useEffect(() => {
+    if (!role) return;
+    // Keep role aligned with super-admin identity (settings tab depends on this)
+    if (
+      isSuperAdminIdentity(actor) &&
+      role !== ADMIN_ROLES.SUPER_ADMIN
+    ) {
+      setRole(ADMIN_ROLES.SUPER_ADMIN);
+      sessionStorage.setItem('dk_admin_role', ADMIN_ROLES.SUPER_ADMIN);
+      return;
+    }
+    if (!searchParams.get('tab')) {
+      selectTab('LIST', { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only seed URL once per login
+  }, [role, actor]);
 
   if (!role) {
     return (
@@ -206,8 +283,8 @@ export default function AdminApp({ settings }) {
           <h1>{t('강사 / 관리자 포털', 'Instructor / Admin Portal')}</h1>
           <p>
             {t(
-              '아이디와 4자리 PIN으로 로그인하세요.',
-              'Sign in with ID and 4-digit PIN.',
+              '아이디와 4자리 PIN으로 로그인하세요. (최고 관리자: doublek777@gmail.com)',
+              'Sign in with ID and 4-digit PIN. (Super admin: doublek777@gmail.com)',
             )}
           </p>
           <div style={{ textAlign: 'left' }}>
@@ -291,10 +368,10 @@ export default function AdminApp({ settings }) {
       >
         <div>
           <strong>
-            {role === 'ADMIN'
-              ? t('최고 관리자 모드', 'Full Admin Mode')
-              : role === 'ADMIN_TIER1'
-                ? t('1등급 관리자 모드', 'Tier 1 Admin Mode')
+            {isSuperAdmin(role, actor)
+              ? t('최고 관리자 모드', 'Super Admin Mode')
+              : isStaffAdmin(role)
+                ? t('관리자 모드', 'Admin Mode')
                 : `[${actor}] ${t('예약자 뷰', 'Holder View')}`}
           </strong>
         </div>
@@ -326,18 +403,13 @@ export default function AdminApp({ settings }) {
 
       <nav className="admin-nav">
         {TABS.filter((item) => {
-          if (role === 'INSTRUCTOR') {
+          if (isInstructorRole(role)) {
             return ['LIST', 'MANIFEST', 'HOTEL'].includes(item.id);
           }
-          // Settings dashboard: full admin + tier-1 (credentials section stays ADMIN-only inside tab)
-          if (
-            item.id === 'SETTINGS' &&
-            role !== 'ADMIN' &&
-            role !== 'ADMIN_TIER1'
-          ) {
+          // Settings dashboard: all staff admins (account manager is super-only inside tab)
+          if (item.id === 'SETTINGS' && !canAccessSettings(role)) {
             return false;
           }
-          if (role === 'INSTRUCTOR' && item.id === 'ADS') return false;
           return true;
         }).map((item) => {
           const isTrash = item.id === 'ARCHIVE';
@@ -354,7 +426,7 @@ export default function AdminApp({ settings }) {
               key={item.id}
               type="button"
               className={classes}
-              onClick={() => setTab(item.id)}
+              onClick={() => selectTab(item.id)}
             >
               {item.emoji} {t(item.ko, item.en)}
               {isTrash ? ` (${trashCount})` : ''}
@@ -414,6 +486,7 @@ export default function AdminApp({ settings }) {
               }
               await addAdminLog({
                 type: 'DELETE',
+                actor,
                 message: `[예약 취소] ${guestName || ''} 다이버의 예약이 휴지통으로 이동되었습니다.`,
               });
               toast.success(t('게스트가 취소되었습니다.', 'Guest cancelled.'));
@@ -470,9 +543,10 @@ export default function AdminApp({ settings }) {
         />
       )}
 
-      {tab === 'ADS' && role !== 'INSTRUCTOR' && (
+      {tab === 'ADS' && isStaffAdmin(role) && (
         <AdsTab
           t={t}
+          lang={lang}
           settings={settings}
           onPatchSettings={async (partial) => {
             await patchSettings(partial);
@@ -489,6 +563,14 @@ export default function AdminApp({ settings }) {
           onToggleRead={async (id, isRead) => {
             await setLogRead(id, isRead);
           }}
+          onMarkAllRead={async (ids) => {
+            const n = await markLogsReadByIds(ids);
+            toast.success(
+              n
+                ? t(`모두 읽음 처리 (${n})`, `Marked all read (${n})`)
+                : t('읽을 알림이 없습니다', 'Nothing to mark'),
+            );
+          }}
           onRestore={async (item) => {
             await restoreFromTrash(item);
             toast.success(t('복구되었습니다', 'Restored'));
@@ -504,17 +586,20 @@ export default function AdminApp({ settings }) {
         />
       )}
 
-      {tab === 'SETTINGS' &&
-        (role === 'ADMIN' || role === 'ADMIN_TIER1') && (
-          <SettingsTab
-            t={t}
-            settings={settings}
-            role={role}
-            onPatchSettings={async (partial) => {
-              await patchSettings(partial);
-            }}
-          />
-        )}
+      {tab === 'SETTINGS' && canAccessSettings(role) && (
+        <SettingsTab
+          t={t}
+          settings={settings}
+          role={
+            isSuperAdmin(role, actor)
+              ? ADMIN_ROLES.SUPER_ADMIN
+              : ADMIN_ROLES.ADMIN
+          }
+          onPatchSettings={async (partial) => {
+            await patchSettings(partial);
+          }}
+        />
+      )}
 
       {quoteTarget && (
         <QuoteModal

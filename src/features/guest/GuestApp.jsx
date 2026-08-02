@@ -1,10 +1,14 @@
 import emailjs from '@emailjs/browser';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BOOKER_GRADES,
   createEmptyRoom,
   DEFAULT_GROUP_PIN,
+  generateFourDigitPin,
   STORAGE_KEYS,
+  filterPassportEnglishInput,
+  toPassportEnglishName,
 } from '../../domain/defaults';
 import {
   buildPricingExtras,
@@ -37,8 +41,15 @@ import StepIndicator from '../../ui/StepIndicator';
 import StickyActionBar from '../../ui/StickyActionBar';
 import { useToast } from '../../ui/ToastContext';
 
+function parseBookingStep(raw) {
+  const n = Number(raw);
+  return n === 2 || n === 3 ? n : 1;
+}
+
 export default function GuestApp({ settings }) {
   const toast = useToast();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [lang, setLang] = useState(
     () => localStorage.getItem('guest_lang') || 'KO',
   );
@@ -57,11 +68,19 @@ export default function GuestApp({ settings }) {
   });
   const [gateName, setGateName] = useState(() => {
     if (localStorage.getItem(STORAGE_KEYS.guestGateRemember) !== '1') return '';
-    return localStorage.getItem(STORAGE_KEYS.guestGateName) || '';
+    return toPassportEnglishName(
+      localStorage.getItem(STORAGE_KEYS.guestGateName) || '',
+    );
   });
-  const [step, setStep] = useState(1);
-  const [maxReached, setMaxReached] = useState(1);
-  const [repName, setRepName] = useState(session.repName || '');
+  const step = session.loggedIn
+    ? parseBookingStep(searchParams.get('step'))
+    : 1;
+  const [maxReached, setMaxReached] = useState(() =>
+    Math.max(1, parseBookingStep(searchParams.get('step'))),
+  );
+  const [repName, setRepName] = useState(() =>
+    toPassportEnglishName(session.repName || ''),
+  );
   const [repEmail, setRepEmail] = useState(
     () =>
       session.email ||
@@ -168,6 +187,8 @@ export default function GuestApp({ settings }) {
     setRepEmail(next.email);
     setRepName(next.repName);
     setSession(next);
+    setMaxReached(1);
+    setSearchParams({ step: '1' }, { replace: true });
     toast.success(
       t('로그인되었습니다. 예약을 시작하세요.', 'Signed in. Start booking.'),
     );
@@ -220,7 +241,10 @@ export default function GuestApp({ settings }) {
       localStorage.removeItem(STORAGE_KEYS.guestGateName);
     }
     enterBooking(
-      continueAsGuest({ email: gateEmail.trim(), name: gateName.trim() }),
+      continueAsGuest({
+        email: gateEmail.trim(),
+        name: toPassportEnglishName(gateName),
+      }),
     );
   };
 
@@ -228,15 +252,45 @@ export default function GuestApp({ settings }) {
     await signOutGuest();
     clearGuestSession();
     setSession(loadGuestSession());
+    setMaxReached(1);
+    setSearchParams({}, { replace: true });
   };
 
-  const goStep = (n) => {
-    setStep(n);
-    setMaxReached((m) => Math.max(m, n));
+  const goStep = (n, { replace = false } = {}) => {
+    const next = parseBookingStep(n);
+    setMaxReached((m) => Math.max(m, next));
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.set('step', String(next));
+        return p;
+      },
+      { replace },
+    );
   };
+
+  // Keep ?step= in sync for browser Back/Forward while booking
+  useEffect(() => {
+    if (!session.loggedIn) return;
+    if (!searchParams.get('step')) {
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          p.set('step', '1');
+          return p;
+        },
+        { replace: true },
+      );
+    }
+  }, [session.loggedIn, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (!session.loggedIn) return;
+    setMaxReached((m) => Math.max(m, step));
+  }, [session.loggedIn, step]);
 
   const seedDiver1FromRep = () => {
-    const name = repName.trim().toUpperCase();
+    const name = toPassportEnglishName(repName);
     if (!name) return;
     setRoomsData((prev) =>
       prev.map((room, ri) => {
@@ -493,7 +547,7 @@ export default function GuestApp({ settings }) {
       const submittedAt = new Date().toISOString();
       const payload = {
         bookingInstructor: bookingInstructor.trim(),
-        repName: repName.trim().toUpperCase(),
+        repName: toPassportEnglishName(repName),
         repEmail: repEmail.trim(),
         groupPin,
         bookerGrade,
@@ -546,8 +600,8 @@ export default function GuestApp({ settings }) {
           'Booking submitted. Check your email.',
         ),
       );
-      setStep(1);
       setMaxReached(1);
+      goStep(1, { replace: true });
       setRoomsData([createEmptyRoom(1)]);
       setRoomCount(1);
       setGroupPin('');
@@ -563,7 +617,7 @@ export default function GuestApp({ settings }) {
   if (!session.loggedIn) {
     return (
       <div className="app-shell">
-        <RollingBanner ads={settings.adsConfig} />
+        <RollingBanner ads={settings.adsConfig} lang={lang} />
         <GuestTopBar t={t} lang={lang} setLang={setLang} />
         <div className="card login-card">
           <h1>IDA x DOUBLE K FREEDIVING</h1>
@@ -606,11 +660,17 @@ export default function GuestApp({ settings }) {
                 className="input-field"
                 value={gateName}
                 onChange={(e) =>
-                  setGateName(
-                    e.target.value.replace(/[^a-zA-Z\s]/g, '').toUpperCase(),
-                  )
+                  setGateName(filterPassportEnglishInput(e.target.value))
                 }
                 placeholder="HONG GILDONG"
+                lang="en"
+                autoCapitalize="characters"
+                inputMode="text"
+                pattern="[A-Za-z ]*"
+                title={t(
+                  '영문 여권 이름만 입력 (한글 불가)',
+                  'Passport English letters only (no Korean)',
+                )}
               />
               <label className="label-text" style={{ marginTop: 10 }}>
                 {t('이메일', 'Email')}
@@ -671,7 +731,7 @@ export default function GuestApp({ settings }) {
 
   return (
     <div className="app-shell">
-      <RollingBanner ads={settings.adsConfig} />
+      <RollingBanner ads={settings.adsConfig} lang={lang} />
       <GuestTopBar
         t={t}
         lang={lang}
@@ -702,11 +762,24 @@ export default function GuestApp({ settings }) {
                 className="input-field"
                 value={repName}
                 onChange={(e) =>
-                  setRepName(
-                    e.target.value.replace(/[^a-zA-Z\s]/g, '').toUpperCase(),
-                  )
+                  setRepName(filterPassportEnglishInput(e.target.value))
                 }
+                placeholder="HONG GILDONG"
+                lang="en"
+                autoCapitalize="characters"
+                inputMode="text"
+                pattern="[A-Za-z ]*"
+                title={t(
+                  '영문 여권 이름만 입력 (한글 불가)',
+                  'Passport English letters only (no Korean)',
+                )}
               />
+              <small style={{ color: 'var(--muted)' }}>
+                {t(
+                  '영문만 입력됩니다. 한글·숫자는 자동으로 제거됩니다.',
+                  'English letters only. Korean and digits are removed.',
+                )}
+              </small>
             </div>
             <div>
               <label className="label-text">
@@ -735,15 +808,32 @@ export default function GuestApp({ settings }) {
                 {t('조회용 비밀번호 (4자리)', '4-digit PIN')}
                 <span className="required-star"> *</span>
               </label>
-              <input
-                className="input-field"
-                inputMode="numeric"
-                maxLength={4}
-                value={groupPin}
-                onChange={(e) =>
-                  setGroupPin(e.target.value.replace(/\D/g, '').slice(0, 4))
-                }
-              />
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  className="input-field"
+                  style={{ flex: 1, marginBottom: 0 }}
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={groupPin}
+                  onChange={(e) =>
+                    setGroupPin(e.target.value.replace(/\D/g, '').slice(0, 4))
+                  }
+                />
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  style={{ width: 'auto', whiteSpace: 'nowrap', flexShrink: 0 }}
+                  onClick={() => {
+                    const next = generateFourDigitPin();
+                    setGroupPin(next);
+                    toast.success(
+                      t(`PIN 생성: ${next}`, `PIN generated: ${next}`),
+                    );
+                  }}
+                >
+                  {t('자동 생성', 'Auto')}
+                </button>
+              </div>
             </div>
             <div>
               <label className="label-text">
@@ -963,7 +1053,15 @@ export default function GuestApp({ settings }) {
       <StickyActionBar
         hideLeft={step === 1}
         leftLabel={t('이전', 'Back')}
-        onLeft={() => goStep(Math.max(1, step - 1))}
+        onLeft={() => {
+          if (step <= 1) return;
+          // Prefer browser history so Back button stack stays consistent
+          if (window.history.length > 1) {
+            navigate(-1);
+            return;
+          }
+          goStep(step - 1, { replace: true });
+        }}
         rightLabel={
           step === 1
             ? t('다음 단계로 이동 (객실/다이버 입력) →', 'Next Step →')

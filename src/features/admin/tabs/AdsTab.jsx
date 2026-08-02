@@ -1,18 +1,36 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AD_IMAGE_MAX_BYTES,
   uploadAdImage,
 } from '../../../data/adsStorage';
+import { adMatchesLang, normalizeAdLang } from '../../../components/RollingBanner';
 import { useToast } from '../../../ui/ToastContext';
 
-export default function AdsTab({ t, settings, onPatchSettings }) {
+export default function AdsTab({ t, lang = 'KO', settings, onPatchSettings }) {
   const toast = useToast();
   const ads = Array.isArray(settings.adsConfig) ? settings.adsConfig : [];
+  const headerLang = normalizeAdLang(lang);
   const [title, setTitle] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
   const [imageUrl, setImageUrl] = useState('');
+  const [adLang, setAdLang] = useState(headerLang);
+  const [listFilter, setListFilter] = useState(headerLang); // KO | ENG | ALL
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  // Follow admin header KOR/ENG for list + default publish language.
+  useEffect(() => {
+    setListFilter(headerLang);
+    setAdLang(headerLang);
+  }, [headerLang]);
+
+  const visibleAds = useMemo(() => {
+    const sorted = [...ads].sort(
+      (a, b) => (Number(a.order) || 0) - (Number(b.order) || 0),
+    );
+    if (listFilter === 'ALL') return sorted;
+    return sorted.filter((a) => adMatchesLang(a, listFilter));
+  }, [ads, listFilter]);
 
   const saveAds = async (next) => {
     setSaving(true);
@@ -33,11 +51,13 @@ export default function AdsTab({ t, settings, onPatchSettings }) {
       );
       return;
     }
+    const lang = normalizeAdLang(adLang);
     const item = {
       id: `ad_${Date.now()}`,
       title: title.trim(),
       linkUrl: linkUrl.trim(),
       imageUrl: imageUrl.trim(),
+      lang,
       isActive: true,
       order: ads.length,
     };
@@ -45,6 +65,7 @@ export default function AdsTab({ t, settings, onPatchSettings }) {
     setTitle('');
     setLinkUrl('');
     setImageUrl('');
+    setListFilter(lang);
   };
 
   const onPickImage = async (e) => {
@@ -66,7 +87,6 @@ export default function AdsTab({ t, settings, onPatchSettings }) {
     }
     setUploading(true);
     try {
-      // Prefer Firebase Storage URL; falls back to compressed data URL if Storage hangs.
       const url = await uploadAdImage(file);
       setImageUrl(url);
       if (String(url).startsWith('data:')) {
@@ -108,6 +128,11 @@ export default function AdsTab({ t, settings, onPatchSettings }) {
     }
   };
 
+  const langLabel = (lang) => {
+    const n = normalizeAdLang(lang);
+    return n === 'ENG' ? 'ENG' : 'KOR';
+  };
+
   return (
     <div>
       <div className="card">
@@ -116,10 +141,33 @@ export default function AdsTab({ t, settings, onPatchSettings }) {
         </h3>
         <p style={{ color: 'var(--muted)', fontSize: 13 }}>
           {t(
-            '게스트 예약 화면 상단에 롤링 배너로 표시됩니다. 활성 광고만 노출됩니다. Storage가 있으면 URL로 저장되고, 없으면 자동 압축해 저장합니다.',
-            'Rolling banner on the guest screen. Uses Storage URL when available, otherwise a compressed local image.',
+            '게스트 화면 언어(KOR/ENG)에 맞는 광고만 롤링 배너로 표시됩니다. 올릴 때 언어를 선택하세요.',
+            'Guest banners follow the site language (KOR/ENG). Choose a language when uploading.',
           )}
         </p>
+
+        <div style={{ marginBottom: 14 }}>
+          <label className="label-text">
+            {t('게시 언어', 'Publish language')}
+          </label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {['KO', 'ENG'].map((code) => (
+              <button
+                key={code}
+                type="button"
+                className={
+                  normalizeAdLang(adLang) === normalizeAdLang(code)
+                    ? 'btn-primary'
+                    : 'btn-secondary'
+                }
+                style={{ width: 'auto', minWidth: 88 }}
+                onClick={() => setAdLang(normalizeAdLang(code))}
+              >
+                {code === 'KO' ? 'KOR' : 'ENG'}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className="grid-2">
           <div>
@@ -192,105 +240,198 @@ export default function AdsTab({ t, settings, onPatchSettings }) {
         >
           {uploading
             ? t('업로드 중…', 'Uploading…')
-            : t('광고 추가', 'Add Ad')}
+            : t(
+                `${langLabel(adLang)} 광고 추가`,
+                `Add ${langLabel(adLang)} Ad`,
+              )}
         </button>
       </div>
 
-      {ads.map((ad, idx) => (
-        <div key={ad.id} className="card">
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              gap: 12,
-              alignItems: 'flex-start',
-            }}
+      <div
+        className="card"
+        style={{
+          display: 'flex',
+          gap: 8,
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          padding: '12px 16px',
+        }}
+      >
+        <span style={{ fontSize: 13, fontWeight: 700, marginRight: 4 }}>
+          {t('목록 필터', 'List filter')}
+        </span>
+        {[
+          { id: 'KO', label: 'KOR' },
+          { id: 'ENG', label: 'ENG' },
+          { id: 'ALL', label: t('전체', 'All') },
+        ].map((opt) => (
+          <button
+            key={opt.id}
+            type="button"
+            className={
+              listFilter === opt.id ? 'btn-primary' : 'btn-secondary'
+            }
+            style={{ width: 'auto', minWidth: 72 }}
+            onClick={() => setListFilter(opt.id)}
           >
-            <div style={{ flex: 1 }}>
-              <strong>
-                #{idx + 1} {ad.title || t('(제목 없음)', '(Untitled)')}
-              </strong>
-              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-                {ad.linkUrl || '-'}
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {visibleAds.map((ad) => {
+        const idx = ads.findIndex((a) => a.id === ad.id);
+        return (
+          <div key={ad.id} className="card">
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 12,
+                alignItems: 'flex-start',
+              }}
+            >
+              <div style={{ flex: 1 }}>
+                <strong>
+                  #{(Number(ad.order) || 0) + 1}{' '}
+                  {ad.title || t('(제목 없음)', '(Untitled)')}
+                  <span
+                    style={{
+                      marginLeft: 8,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      padding: '2px 8px',
+                      borderRadius: 999,
+                      background:
+                        normalizeAdLang(ad.lang || 'KO') === 'ENG'
+                          ? '#dbe4ff'
+                          : '#fff3bf',
+                      color:
+                        normalizeAdLang(ad.lang || 'KO') === 'ENG'
+                          ? '#364fc7'
+                          : '#e67700',
+                    }}
+                  >
+                    {ad.lang ? langLabel(ad.lang) : t('공통(구)', 'Legacy')}
+                  </span>
+                </strong>
+                <div
+                  style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}
+                >
+                  {ad.linkUrl || '-'}
+                </div>
+                {ad.imageUrl ? (
+                  <img
+                    src={ad.imageUrl}
+                    alt={ad.title || 'ad'}
+                    style={{
+                      marginTop: 10,
+                      width: '100%',
+                      maxHeight: 120,
+                      objectFit: 'cover',
+                      borderRadius: 10,
+                    }}
+                  />
+                ) : null}
               </div>
-              {ad.imageUrl ? (
-                <img
-                  src={ad.imageUrl}
-                  alt={ad.title || 'ad'}
-                  style={{
-                    marginTop: 10,
-                    width: '100%',
-                    maxHeight: 120,
-                    objectFit: 'cover',
-                    borderRadius: 10,
-                  }}
-                />
-              ) : null}
-            </div>
-            <div className="action-row">
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() =>
-                  saveAds(
-                    ads.map((a) =>
-                      a.id === ad.id ? { ...a, isActive: !a.isActive } : a,
-                    ),
-                  )
-                }
-              >
-                {ad.isActive !== false
-                  ? t('활성', 'Active')
-                  : t('비활성', 'Off')}
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                disabled={idx === 0}
-                onClick={() => {
-                  if (idx === 0) return;
-                  const next = [...ads];
-                  [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-                  saveAds(next.map((a, i) => ({ ...a, order: i })));
-                }}
-              >
-                ↑
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                disabled={idx === ads.length - 1}
-                onClick={() => {
-                  if (idx >= ads.length - 1) return;
-                  const next = [...ads];
-                  [next[idx + 1], next[idx]] = [next[idx], next[idx + 1]];
-                  saveAds(next.map((a, i) => ({ ...a, order: i })));
-                }}
-              >
-                ↓
-              </button>
-              <button
-                type="button"
-                className="btn-danger"
-                onClick={() => {
-                  if (
-                    !window.confirm(
-                      t('이 광고를 삭제할까요?', 'Delete this ad?'),
+              <div className="action-row">
+                <div
+                  style={{ display: 'flex', gap: 4 }}
+                  title={t(
+                    '클릭한 언어 모드에서만 게스트에게 표시',
+                    'Shown to guests only in the selected language',
+                  )}
+                >
+                  {['KO', 'ENG'].map((code) => {
+                    const selected =
+                      ad.lang != null &&
+                      String(ad.lang).trim() !== '' &&
+                      normalizeAdLang(ad.lang) === normalizeAdLang(code);
+                    return (
+                      <button
+                        key={code}
+                        type="button"
+                        className={selected ? 'btn-primary' : 'btn-secondary'}
+                        style={{ width: 'auto', minWidth: 52, padding: '6px 10px' }}
+                        onClick={() => {
+                          const nextLang = normalizeAdLang(code);
+                          if (selected) return;
+                          saveAds(
+                            ads.map((a) =>
+                              a.id === ad.id ? { ...a, lang: nextLang } : a,
+                            ),
+                          );
+                        }}
+                      >
+                        {code === 'KO' ? 'KOR' : 'ENG'}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() =>
+                    saveAds(
+                      ads.map((a) =>
+                        a.id === ad.id ? { ...a, isActive: !a.isActive } : a,
+                      ),
                     )
-                  ) {
-                    return;
                   }
-                  saveAds(ads.filter((a) => a.id !== ad.id));
-                }}
-              >
-                {t('삭제', 'Delete')}
-              </button>
+                >
+                  {ad.isActive !== false
+                    ? t('활성', 'Active')
+                    : t('비활성', 'Off')}
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={idx <= 0}
+                  onClick={() => {
+                    if (idx <= 0) return;
+                    const next = [...ads];
+                    [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                    saveAds(next.map((a, i) => ({ ...a, order: i })));
+                  }}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={idx < 0 || idx >= ads.length - 1}
+                  onClick={() => {
+                    if (idx < 0 || idx >= ads.length - 1) return;
+                    const next = [...ads];
+                    [next[idx + 1], next[idx]] = [next[idx], next[idx + 1]];
+                    saveAds(next.map((a, i) => ({ ...a, order: i })));
+                  }}
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  className="btn-danger"
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        t('이 광고를 삭제할까요?', 'Delete this ad?'),
+                      )
+                    ) {
+                      return;
+                    }
+                    saveAds(ads.filter((a) => a.id !== ad.id));
+                  }}
+                >
+                  {t('삭제', 'Delete')}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
-      {!ads.length && (
+      {!visibleAds.length && (
         <p style={{ color: 'var(--muted)' }}>
           {t('등록된 광고가 없습니다.', 'No ads yet.')}
         </p>

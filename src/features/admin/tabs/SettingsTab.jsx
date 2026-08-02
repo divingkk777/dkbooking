@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react';
 import {
+  canManageAdminAccounts,
+  resolveAdminsConfig,
+  SUPER_ADMIN_EMAIL,
+} from '../../../domain/adminRoles';
+import {
+  generateFourDigitPin,
+  generateLoginId,
   resolveOptionPrices,
   resolveOptionsCatalog,
   resolvePromoCodesConfig,
@@ -89,7 +96,7 @@ export default function SettingsTab({
   role = 'ADMIN',
 }) {
   const toast = useToast();
-  const isFullAdmin = String(role || '').toUpperCase() === 'ADMIN';
+  const canManageAdmins = canManageAdminAccounts(role);
 
   const [exchangeRate, setExchangeRate] = useState(settings.exchangeRate);
   const [optionsCatalog, setOptionsCatalog] = useState(() =>
@@ -145,14 +152,15 @@ export default function SettingsTab({
   };
   const [newPromo, setNewPromo] = useState(() => ({ ...emptyPromoForm }));
 
-  const [adminId1, setAdminId1] = useState(settings.adminId1 || '');
-  const [adminPassword1, setAdminPassword1] = useState(
-    settings.adminPassword1 || '',
+  const [superPin, setSuperPin] = useState(settings.adminPassword1 || '');
+  const [admins, setAdmins] = useState(() =>
+    resolveAdminsConfig(settings.adminsConfig, {
+      adminId2: settings.adminId2,
+      adminPassword2: settings.adminPassword2,
+    }),
   );
-  const [adminId2, setAdminId2] = useState(settings.adminId2 || '');
-  const [adminPassword2, setAdminPassword2] = useState(
-    settings.adminPassword2 || '',
-  );
+  const [newAdminUser, setNewAdminUser] = useState('');
+  const [newAdminPin, setNewAdminPin] = useState('');
 
   const [newTraining, setNewTraining] = useState({
     name: '',
@@ -194,10 +202,13 @@ export default function SettingsTab({
     setDrivers(structuredClone(settings.driversConfig || []));
     setSafety(structuredClone(settings.safetyInstructorsConfig || []));
     setPromoCodes(resolvePromoCodesConfig(settings.promoCodesConfig));
-    setAdminId1(settings.adminId1 || '');
-    setAdminPassword1(settings.adminPassword1 || '');
-    setAdminId2(settings.adminId2 || '');
-    setAdminPassword2(settings.adminPassword2 || '');
+    setSuperPin(settings.adminPassword1 || '');
+    setAdmins(
+      resolveAdminsConfig(settings.adminsConfig, {
+        adminId2: settings.adminId2,
+        adminPassword2: settings.adminPassword2,
+      }),
+    );
   }, [settings]);
 
   const updateCatalogOption = (idx, patch) => {
@@ -2277,69 +2288,363 @@ export default function SettingsTab({
         </div>
       </ManagerCard>
 
-      {isFullAdmin && (
+      {canManageAdmins && (
         <ManagerCard
           color="#495057"
-          title={`🔐 ${t('관리자 로그인 계정', 'Admin Login Accounts')}`}
+          title={`🔐 ${t('관리자 계정 관리', 'Admin Account Manager')}`}
+          hint={t(
+            '최고 관리자는 doublek777@gmail.com 고정입니다. 일반 관리자는 설정 탭이 숨겨지며 그 외 기능은 동일합니다.',
+            'Super admin is fixed as doublek777@gmail.com. General admins match super access but Settings is hidden.',
+          )}
         >
-          <div className="grid-2" style={{ paddingTop: 8 }}>
+          <div
+            style={{
+              border: '1px solid #dee2e6',
+              borderRadius: 10,
+              padding: 12,
+              marginBottom: 16,
+              background: '#f8f9fa',
+            }}
+          >
+            <div style={{ fontWeight: 800, marginBottom: 8 }}>
+              {t('최고 관리자', 'Super Admin')}
+            </div>
+            <div className="grid-2">
+              <div>
+                <label className="label-text">{t('아이디 (고정)', 'ID (fixed)')}</label>
+                <input
+                  className="input-field"
+                  value={SUPER_ADMIN_EMAIL}
+                  readOnly
+                  disabled
+                />
+              </div>
+              <div>
+                <label className="label-text">
+                  {t('PIN (4자리)', 'PIN (4-digit)')}
+                </label>
+                <input
+                  className="input-field"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={superPin}
+                  onChange={(e) =>
+                    setSuperPin(e.target.value.replace(/\D/g, '').slice(0, 4))
+                  }
+                />
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn-primary"
+              style={{ width: 'auto', marginTop: 10 }}
+              onClick={() => {
+                if (!/^\d{4}$/.test(String(superPin || ''))) {
+                  toast.error(
+                    t(
+                      'PIN은 숫자 4자리여야 합니다.',
+                      'PIN must be exactly 4 digits.',
+                    ),
+                  );
+                  return;
+                }
+                save(
+                  {
+                    adminId1: SUPER_ADMIN_EMAIL,
+                    adminPassword1: String(superPin),
+                  },
+                  t(
+                    '최고 관리자 PIN이 저장되었습니다.',
+                    'Super admin PIN saved.',
+                  ),
+                );
+              }}
+            >
+              {t('최고 관리자 PIN 저장', 'Save Super Admin PIN')}
+            </button>
+          </div>
+
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>
+            {t('일반 관리자 생성', 'Create General Admin')}
+          </div>
+          <div className="grid-2">
             <div>
-              <label className="label-text">{t('관리자1 ID', 'Admin1 ID')}</label>
+              <label className="label-text">{t('아이디', 'Username')}</label>
               <input
                 className="input-field"
-                value={adminId1}
-                onChange={(e) => setAdminId1(e.target.value)}
+                value={newAdminUser}
+                onChange={(e) => setNewAdminUser(e.target.value.trim())}
+                placeholder={t('예: staff-01', 'e.g. staff-01')}
               />
             </div>
             <div>
               <label className="label-text">
-                {t('관리자1 비밀번호', 'Admin1 Password')}
+                {t('PIN (4자리)', 'PIN (4-digit)')}
               </label>
               <input
                 className="input-field"
-                value={adminPassword1}
-                onChange={(e) => setAdminPassword1(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="label-text">{t('관리자2 ID', 'Admin2 ID')}</label>
-              <input
-                className="input-field"
-                value={adminId2}
-                onChange={(e) => setAdminId2(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="label-text">
-                {t('관리자2 비밀번호', 'Admin2 Password')}
-              </label>
-              <input
-                className="input-field"
-                value={adminPassword2}
-                onChange={(e) => setAdminPassword2(e.target.value)}
+                inputMode="numeric"
+                maxLength={4}
+                value={newAdminPin}
+                onChange={(e) =>
+                  setNewAdminPin(e.target.value.replace(/\D/g, '').slice(0, 4))
+                }
               />
             </div>
           </div>
-          <div className="action-row" style={{ marginTop: 12 }}>
+          <div className="action-row" style={{ marginTop: 10, gap: 8 }}>
+            <button
+              type="button"
+              className="btn-ghost"
+              style={{ width: 'auto' }}
+              onClick={() => {
+                const exclude = [
+                  SUPER_ADMIN_EMAIL,
+                  ...admins.map((a) => a.username),
+                ];
+                const id = generateLoginId('staff', exclude);
+                const pin = generateFourDigitPin();
+                setNewAdminUser(id);
+                setNewAdminPin(pin);
+                toast.success(
+                  t(`자동 생성: ${id} / ${pin}`, `Generated: ${id} / ${pin}`),
+                );
+              }}
+            >
+              {t('아이디·PIN 자동 생성', 'Auto-generate ID·PIN')}
+            </button>
             <button
               type="button"
               className="btn-primary"
               style={{ width: 'auto' }}
-              onClick={() =>
-                save(
+              onClick={async () => {
+                const username = String(newAdminUser || '').trim();
+                const pin = String(newAdminPin || '');
+                if (!username) {
+                  toast.error(t('아이디를 입력하세요.', 'Enter a username.'));
+                  return;
+                }
+                if (!/^\d{4}$/.test(pin)) {
+                  toast.error(
+                    t(
+                      'PIN은 숫자 4자리여야 합니다.',
+                      'PIN must be exactly 4 digits.',
+                    ),
+                  );
+                  return;
+                }
+                if (
+                  username.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()
+                ) {
+                  toast.error(
+                    t(
+                      '최고 관리자 이메일은 일반 관리자로 만들 수 없습니다.',
+                      'Cannot create a general admin with the super-admin email.',
+                    ),
+                  );
+                  return;
+                }
+                if (
+                  admins.some(
+                    (a) =>
+                      String(a.username).toLowerCase() ===
+                      username.toLowerCase(),
+                  )
+                ) {
+                  toast.error(
+                    t('이미 존재하는 아이디입니다.', 'Username already exists.'),
+                  );
+                  return;
+                }
+                const next = [
+                  ...admins,
                   {
-                    adminId1,
-                    adminPassword1,
-                    adminId2,
-                    adminPassword2,
+                    id: `ADM_${Date.now()}`,
+                    username,
+                    pin,
+                    isActive: true,
+                    createdAt: new Date().toISOString(),
                   },
-                  t('관리자 계정이 저장되었습니다.', 'Admin accounts saved.'),
-                )
-              }
+                ];
+                setAdmins(next);
+                setNewAdminUser('');
+                setNewAdminPin('');
+                await save(
+                  { adminsConfig: next },
+                  t(
+                    `관리자 생성됨: ${username}`,
+                    `Admin created: ${username}`,
+                  ),
+                );
+              }}
             >
-              {t('계정 저장', 'Save Accounts')}
+              {t('관리자 추가·저장', 'Add & Save Admin')}
             </button>
           </div>
+
+          <div style={{ marginTop: 18, overflowX: 'auto' }}>
+            <table className="data-table" style={{ minWidth: 480 }}>
+              <thead>
+                <tr>
+                  <th>{t('아이디', 'Username')}</th>
+                  <th>PIN</th>
+                  <th>{t('상태', 'Status')}</th>
+                  <th>{t('작업', 'Actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {admins.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} style={{ color: '#868e96' }}>
+                      {t(
+                        '생성된 일반 관리자가 없습니다.',
+                        'No general admins yet.',
+                      )}
+                    </td>
+                  </tr>
+                ) : (
+                  admins.map((row) => (
+                    <tr key={row.id}>
+                      <td>
+                        <input
+                          className="input-field"
+                          style={{ marginBottom: 0 }}
+                          value={row.username}
+                          onChange={(e) => {
+                            const username = e.target.value.trim();
+                            setAdmins((prev) =>
+                              prev.map((a) =>
+                                a.id === row.id ? { ...a, username } : a,
+                              ),
+                            );
+                          }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="input-field"
+                          style={{ marginBottom: 0, maxWidth: 100 }}
+                          inputMode="numeric"
+                          maxLength={4}
+                          value={row.pin}
+                          onChange={(e) => {
+                            const pin = e.target.value
+                              .replace(/\D/g, '')
+                              .slice(0, 4);
+                            setAdmins((prev) =>
+                              prev.map((a) =>
+                                a.id === row.id ? { ...a, pin } : a,
+                              ),
+                            );
+                          }}
+                        />
+                      </td>
+                      <td>
+                        <StatusToggle
+                          on={row.isActive !== false}
+                          color="#2b8a3e"
+                          onLabel="ON"
+                          offLabel="OFF"
+                          onClick={() => {
+                            setAdmins((prev) =>
+                              prev.map((a) =>
+                                a.id === row.id
+                                  ? { ...a, isActive: a.isActive === false }
+                                  : a,
+                              ),
+                            );
+                          }}
+                        />
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          style={{ width: 'auto', color: '#c92a2a' }}
+                          onClick={async () => {
+                            if (
+                              !window.confirm(
+                                t(
+                                  '이 관리자 계정을 삭제할까요?',
+                                  'Delete this admin account?',
+                                ),
+                              )
+                            ) {
+                              return;
+                            }
+                            const next = admins.filter((a) => a.id !== row.id);
+                            setAdmins(next);
+                            await save(
+                              { adminsConfig: next },
+                              t('관리자를 삭제했습니다.', 'Admin deleted.'),
+                            );
+                          }}
+                        >
+                          {t('삭제', 'Delete')}
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          {admins.length > 0 ? (
+            <button
+              type="button"
+              className="btn-primary"
+              style={{ width: 'auto', marginTop: 12 }}
+              onClick={() => {
+                for (const a of admins) {
+                  if (!String(a.username || '').trim()) {
+                    toast.error(
+                      t('빈 아이디가 있습니다.', 'A username is empty.'),
+                    );
+                    return;
+                  }
+                  if (!/^\d{4}$/.test(String(a.pin || ''))) {
+                    toast.error(
+                      t(
+                        '모든 PIN은 숫자 4자리여야 합니다.',
+                        'Every PIN must be 4 digits.',
+                      ),
+                    );
+                    return;
+                  }
+                  if (
+                    String(a.username).toLowerCase() ===
+                    SUPER_ADMIN_EMAIL.toLowerCase()
+                  ) {
+                    toast.error(
+                      t(
+                        '최고 관리자 이메일은 일반 관리자 목록에 둘 수 없습니다.',
+                        'Super-admin email cannot be in the general list.',
+                      ),
+                    );
+                    return;
+                  }
+                }
+                const names = admins.map((a) =>
+                  String(a.username).trim().toLowerCase(),
+                );
+                if (new Set(names).size !== names.length) {
+                  toast.error(
+                    t('중복된 아이디가 있습니다.', 'Duplicate usernames found.'),
+                  );
+                  return;
+                }
+                save(
+                  { adminsConfig: admins },
+                  t(
+                    '일반 관리자 목록이 저장되었습니다.',
+                    'General admin list saved.',
+                  ),
+                );
+              }}
+            >
+              {t('일반 관리자 목록 저장', 'Save General Admin List')}
+            </button>
+          ) : null}
         </ManagerCard>
       )}
     </div>

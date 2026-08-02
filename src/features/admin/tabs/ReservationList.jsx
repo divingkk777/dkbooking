@@ -1,5 +1,9 @@
 import emailjs from '@emailjs/browser';
 import { useEffect, useMemo, useState } from 'react';
+import {
+  isInstructorRole,
+  isStaffAdmin,
+} from '../../../domain/adminRoles';
 import { formatMoney } from '../../../domain/pricing';
 import { addAdminLog } from '../../../data/logsRepo';
 import { useToast } from '../../../ui/ToastContext';
@@ -27,11 +31,11 @@ import {
 const STRIPE_COLORS = ['#ffffff', '#d0e8ff'];
 
 function isRoleAdmin(role) {
-  return String(role || '').toUpperCase() === 'ADMIN';
+  return isStaffAdmin(role);
 }
 
 function isRoleInstructor(role) {
-  return String(role || '').toUpperCase() === 'INSTRUCTOR';
+  return isInstructorRole(role);
 }
 
 function matchesSearch(row, term) {

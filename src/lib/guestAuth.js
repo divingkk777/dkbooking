@@ -5,6 +5,7 @@ import {
   signInWithRedirect,
   signOut,
 } from 'firebase/auth';
+import { toPassportEnglishName } from '../domain/defaults';
 import {
   assertFirebaseAuthConfig,
   auth,
@@ -33,14 +34,12 @@ export function loadGuestSession() {
 
 export function persistGuestUser(userLike) {
   const email = userLike?.email || '';
-  const name = (
-    userLike?.displayName ||
-    userLike?.name ||
-    email.split('@')[0] ||
-    ''
-  )
-    .toString()
-    .toUpperCase();
+  const raw =
+    userLike?.displayName || userLike?.name || email.split('@')[0] || '';
+  // Hangul / non-Latin from Google displayName must not fill passport English field
+  const name =
+    toPassportEnglishName(raw) ||
+    toPassportEnglishName(email.split('@')[0] || '');
   localStorage.setItem(SESSION.loggedIn, 'true');
   localStorage.setItem(SESSION.method, userLike?.method || 'GOOGLE');
   localStorage.setItem(SESSION.email, email);

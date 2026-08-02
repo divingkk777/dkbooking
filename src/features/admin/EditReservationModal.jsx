@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { createEmptyRoom } from '../../domain/defaults';
+import {
+  createEmptyRoom,
+  filterPassportEnglishInput,
+  generateFourDigitPin,
+  toPassportEnglishName,
+} from '../../domain/defaults';
 import { buildPricingExtras, processRoomsData } from '../../domain/pricing';
 import { updateReservation } from '../../data/reservationsRepo';
 import { addAdminLog } from '../../data/logsRepo';
@@ -18,7 +23,9 @@ export default function EditReservationModal({
   const [bookingInstructor, setBookingInstructor] = useState(
     reservation?.bookingInstructor || '',
   );
-  const [repName, setRepName] = useState(reservation?.repName || '');
+  const [repName, setRepName] = useState(() =>
+    toPassportEnglishName(reservation?.repName || ''),
+  );
   const [repEmail, setRepEmail] = useState(reservation?.repEmail || '');
   const [groupPin, setGroupPin] = useState(reservation?.groupPin || '');
   const [roomCount, setRoomCount] = useState(
@@ -35,7 +42,7 @@ export default function EditReservationModal({
   useEffect(() => {
     if (!reservation) return;
     setBookingInstructor(reservation.bookingInstructor || '');
-    setRepName(reservation.repName || '');
+    setRepName(toPassportEnglishName(reservation.repName || ''));
     setRepEmail(reservation.repEmail || '');
     setGroupPin(reservation.groupPin || '');
     setRoomCount(reservation.roomCount || reservation.roomsData?.length || 1);
@@ -84,7 +91,7 @@ export default function EditReservationModal({
       );
       await updateReservation(reservation.id, {
         bookingInstructor: bookingInstructor.trim(),
-        repName: repName.trim().toUpperCase(),
+        repName: toPassportEnglishName(repName),
         repEmail: repEmail.trim(),
         groupPin,
         roomCount,
@@ -97,7 +104,7 @@ export default function EditReservationModal({
       });
       await addAdminLog({
         type: 'EDIT',
-        message: `[예약 수정] ${repName.trim().toUpperCase()} 그룹 예약이 수정되었습니다.`,
+        message: `[예약 수정] ${toPassportEnglishName(repName)} 그룹 예약이 수정되었습니다.`,
       });
       toast.success(t('예약이 저장되었습니다.', 'Reservation saved.'));
       onSaved?.();
@@ -140,10 +147,11 @@ export default function EditReservationModal({
                 className="input-field"
                 value={repName}
                 onChange={(e) =>
-                  setRepName(
-                    e.target.value.replace(/[^a-zA-Z\s]/g, '').toUpperCase(),
-                  )
+                  setRepName(filterPassportEnglishInput(e.target.value))
                 }
+                placeholder="HONG GILDONG"
+                lang="en"
+                autoCapitalize="characters"
               />
             </div>
             <div>
@@ -168,15 +176,32 @@ export default function EditReservationModal({
             </div>
             <div>
               <label className="label-text">{t('PIN (4자리)', 'PIN (4-digit)')}</label>
-              <input
-                className="input-field"
-                inputMode="numeric"
-                maxLength={4}
-                value={groupPin}
-                onChange={(e) =>
-                  setGroupPin(e.target.value.replace(/\D/g, '').slice(0, 4))
-                }
-              />
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  className="input-field"
+                  style={{ flex: 1, marginBottom: 0 }}
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={groupPin}
+                  onChange={(e) =>
+                    setGroupPin(e.target.value.replace(/\D/g, '').slice(0, 4))
+                  }
+                />
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  style={{ width: 'auto', whiteSpace: 'nowrap', flexShrink: 0 }}
+                  onClick={() => {
+                    const next = generateFourDigitPin();
+                    setGroupPin(next);
+                    toast.success(
+                      t(`PIN 생성: ${next}`, `PIN generated: ${next}`),
+                    );
+                  }}
+                >
+                  {t('자동 생성', 'Auto')}
+                </button>
+              </div>
             </div>
             <div>
               <label className="label-text">{t('인솔자코드', 'Escort Code')}</label>

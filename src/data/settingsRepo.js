@@ -1,5 +1,9 @@
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import {
+  resolveAdminsConfig,
+  SUPER_ADMIN_EMAIL,
+} from '../domain/adminRoles';
+import {
   BOOTSTRAP_ADMINS,
   DEFAULT_ACCOUNTS,
   DEFAULT_DRIVERS,
@@ -49,10 +53,15 @@ function normalizeSettings(data = {}) {
         : DEFAULT_ACCOUNTS,
     adsConfig: Array.isArray(data.adsConfig) ? data.adsConfig : [],
     promoCodesConfig: resolvePromoCodesConfig(data.promoCodesConfig),
-    adminId1: data.adminId1 || BOOTSTRAP_ADMINS.adminId1,
+    // Super admin login id is fixed; PIN stays configurable.
+    adminId1: SUPER_ADMIN_EMAIL,
     adminPassword1: data.adminPassword1 || BOOTSTRAP_ADMINS.adminPassword1,
     adminId2: data.adminId2 || BOOTSTRAP_ADMINS.adminId2,
     adminPassword2: data.adminPassword2 || BOOTSTRAP_ADMINS.adminPassword2,
+    adminsConfig: resolveAdminsConfig(data.adminsConfig, {
+      adminId2: data.adminId2,
+      adminPassword2: data.adminPassword2,
+    }),
   };
 }
 

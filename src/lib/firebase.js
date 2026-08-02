@@ -53,6 +53,8 @@ export const COLLECTIONS = {
   reservations: 'reservations',
   trashed: 'trashed_reservations',
   logs: 'admin_logs',
+  /** Bundled overflow logs (not loaded in admin UI). */
+  logsArchive: 'admin_logs_archive',
   settings: 'system_settings',
 };
 

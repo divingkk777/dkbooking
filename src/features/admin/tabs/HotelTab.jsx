@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from 'react';
+import { isStaffAdmin } from '../../../domain/adminRoles';
 import {
   bookingSeqMap,
   formatRoomTypeLabel,
@@ -8,7 +9,7 @@ import AdminMemo from '../AdminMemo';
 const CANCEL_STATUSES = ['취소', '취소완료'];
 
 function isRoleAdmin(role) {
-  return String(role || '').toUpperCase() === 'ADMIN';
+  return isStaffAdmin(role);
 }
 
 function isGuestCancelled(res, guest) {
