@@ -1,14 +1,41 @@
+import { useMemo, useState } from 'react';
+import {
+  LOG_CATEGORY_META,
+  resolveLogCategory,
+} from '../../../data/logsRepo';
+
+const FILTERS = ['ALL', 'NEW', 'CANCEL', 'EDIT', 'MAIL', 'PROMO', 'OTHER'];
+
 export default function LogsArchiveTab({
   mode,
   t,
   logs,
   trashed,
+  onToggleRead,
   onMarkRead,
   onRestore,
   onEmptyTrash,
 }) {
+  const [category, setCategory] = useState('ALL');
+  const items = logs || [];
+
+  const filtered = useMemo(() => {
+    if (category === 'ALL') return items;
+    return items.filter((log) => resolveLogCategory(log) === category);
+  }, [items, category]);
+
+  const unreadCount = items.filter((l) => !l.isRead).length;
+
+  const toggleRead = (log) => {
+    if (onToggleRead) {
+      onToggleRead(log.id, !log.isRead);
+      return;
+    }
+    if (!log.isRead) onMarkRead?.(log.id);
+  };
+
   if (mode === 'ARCHIVE') {
-    const items = trashed || [];
+    const trashItems = trashed || [];
     return (
       <div className="card">
         <div
@@ -24,19 +51,19 @@ export default function LogsArchiveTab({
             type="button"
             className="btn-danger"
             onClick={onEmptyTrash}
-            disabled={items.length === 0}
+            disabled={trashItems.length === 0}
           >
             {t('휴지통 비우기', 'Empty Trash')}
           </button>
         </div>
 
-        {items.length === 0 && (
+        {trashItems.length === 0 && (
           <p style={{ color: 'var(--muted)' }}>
             {t('휴지통이 비어 있습니다.', 'Trash is empty.')}
           </p>
         )}
 
-        {items.map((item) => (
+        {trashItems.map((item) => (
           <div key={item.id} className="sub-card">
             <div
               style={{
@@ -67,9 +94,6 @@ export default function LogsArchiveTab({
     );
   }
 
-  const items = logs || [];
-  const unreadCount = items.filter((l) => !l.isRead).length;
-
   return (
     <div className="card">
       <div
@@ -78,6 +102,8 @@ export default function LogsArchiveTab({
           justifyContent: 'space-between',
           alignItems: 'center',
           marginBottom: 12,
+          gap: 12,
+          flexWrap: 'wrap',
         }}
       >
         <h3 style={{ margin: 0 }}>
@@ -90,43 +116,79 @@ export default function LogsArchiveTab({
         </h3>
       </div>
 
-      {items.length === 0 && (
-        <p style={{ color: 'var(--muted)' }}>{t('로그가 없습니다.', 'No logs.')}</p>
+      <div className="log-filter-row">
+        {FILTERS.map((key) => {
+          const meta = LOG_CATEGORY_META[key];
+          const count =
+            key === 'ALL'
+              ? items.length
+              : items.filter((l) => resolveLogCategory(l) === key).length;
+          if (key !== 'ALL' && count === 0) return null;
+          return (
+            <button
+              key={key}
+              type="button"
+              className={
+                category === key ? 'log-filter-chip active' : 'log-filter-chip'
+              }
+              onClick={() => setCategory(key)}
+            >
+              {t(meta.ko, meta.en)}
+              <span className="log-filter-count">{count}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {filtered.length === 0 && (
+        <p style={{ color: 'var(--muted)' }}>
+          {t('로그가 없습니다.', 'No logs.')}
+        </p>
       )}
 
-      {items.map((log) => (
-        <div
-          key={log.id}
-          className="sub-card"
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: 12,
-          }}
-        >
-          <div>
-            {!log.isRead && (
-              <span className="badge badge-new" style={{ marginRight: 8 }}>
+      {filtered.map((log) => {
+        const cat = resolveLogCategory(log);
+        const catMeta = LOG_CATEGORY_META[cat] || LOG_CATEGORY_META.OTHER;
+        const unread = !log.isRead;
+        return (
+          <div key={log.id} className="log-card">
+            <div className="log-card-main">
+              <button
+                type="button"
+                className={unread ? 'log-new-btn active' : 'log-new-btn'}
+                title={
+                  unread
+                    ? t('클릭하면 읽음 처리', 'Click to mark as read')
+                    : t('클릭하면 NEW로 다시 표시', 'Click to mark as NEW again')
+                }
+                onClick={() => toggleRead(log)}
+              >
                 NEW
-              </span>
-            )}
-            <span>{log.message}</span>
-            <div style={{ color: 'var(--muted)', fontSize: 12 }}>
-              {log.type} · {log.createdAt}
+              </button>
+              <div className="log-card-body">
+                <div className="log-card-message">{log.message}</div>
+                <div className="log-card-meta">
+                  <span className="log-cat-pill">
+                    {t(catMeta.ko, catMeta.en)}
+                  </span>
+                  <span>
+                    {log.type || '-'} · {log.createdAt}
+                  </span>
+                </div>
+              </div>
             </div>
-          </div>
-          {!log.isRead && (
             <button
               type="button"
-              className="btn-secondary"
-              onClick={() => onMarkRead?.(log.id)}
+              className="btn-secondary log-read-btn"
+              onClick={() => toggleRead(log)}
             >
-              {t('읽음 처리', 'Mark Read')}
+              {unread
+                ? t('읽음 처리', 'Mark Read')
+                : t('NEW로 표시', 'Mark NEW')}
             </button>
-          )}
-        </div>
-      ))}
+          </div>
+        );
+      })}
     </div>
   );
 }

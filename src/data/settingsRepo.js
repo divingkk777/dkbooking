@@ -9,13 +9,19 @@ import {
   DEFAULT_UNITS,
   DEFAULT_VEHICLES,
   resolveOptionPrices,
+  resolveOptionsCatalog,
+  resolvePromoCodesConfig,
 } from '../domain/defaults';
 import { COLLECTIONS, SETTINGS_DOC, db } from '../lib/firebase';
 
 function normalizeSettings(data = {}) {
+  const optionsCatalogConfig = resolveOptionsCatalog(
+    data.optionsCatalogConfig || data.optionPricesConfig,
+  );
   return {
     exchangeRate: Number(data.exchangeRate) || DEFAULT_EXCHANGE_RATE,
-    optionPricesConfig: resolveOptionPrices(data.optionPricesConfig),
+    optionsCatalogConfig,
+    optionPricesConfig: resolveOptionPrices(optionsCatalogConfig),
     roomTypesConfig: Array.isArray(data.roomTypesConfig)
       ? data.roomTypesConfig
       : DEFAULT_ROOM_TYPES,
@@ -42,6 +48,7 @@ function normalizeSettings(data = {}) {
         ? data.accountsConfig
         : DEFAULT_ACCOUNTS,
     adsConfig: Array.isArray(data.adsConfig) ? data.adsConfig : [],
+    promoCodesConfig: resolvePromoCodesConfig(data.promoCodesConfig),
     adminId1: data.adminId1 || BOOTSTRAP_ADMINS.adminId1,
     adminPassword1: data.adminPassword1 || BOOTSTRAP_ADMINS.adminPassword1,
     adminId2: data.adminId2 || BOOTSTRAP_ADMINS.adminId2,

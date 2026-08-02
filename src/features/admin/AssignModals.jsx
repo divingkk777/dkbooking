@@ -1,8 +1,18 @@
 import html2canvas from 'html2canvas';
 import { useRef, useState } from 'react';
 import { formatMoney } from '../../domain/pricing';
+import {
+  OfficialQuoteContacts,
+  OfficialQuoteHeader,
+} from './OfficialQuoteSheet';
 
-const FIXED_ACCOUNT_NAMES = ['IDA', 'CASABLUE', 'CEBU', '카카오', 'OTHER'];
+const FIXED_ACCOUNT_NAMES = [
+  'IDA bank',
+  'IDA Wise',
+  'IDA 현장',
+  'CASABLUE',
+  'OTHER',
+];
 
 function ModalShell({ title, onClose, children, width }) {
   return (
@@ -31,14 +41,8 @@ function ModalShell({ title, onClose, children, width }) {
   );
 }
 
-export function PaymentModal({ t, row, accounts, onClose, onPick }) {
-  const names = [
-    ...FIXED_ACCOUNT_NAMES,
-    ...(accounts || [])
-      .filter((a) => a.isActive !== false)
-      .map((a) => a.name)
-      .filter((n) => n && !FIXED_ACCOUNT_NAMES.includes(n)),
-  ];
+export function PaymentModal({ t, row, onClose, onPick }) {
+  const names = FIXED_ACCOUNT_NAMES;
 
   return (
     <ModalShell
@@ -222,7 +226,13 @@ export function TransportModal({ t, row, vehicles, drivers, onClose, onSave }) {
   );
 }
 
-export function CombinedInvoiceModal({ t, rows, exchangeRate, onClose }) {
+export function CombinedInvoiceModal({
+  t,
+  lang = 'KO',
+  rows,
+  exchangeRate,
+  onClose,
+}) {
   const sheetRef = useRef(null);
   const [showUSD, setShowUSD] = useState(false);
 
@@ -237,7 +247,11 @@ export function CombinedInvoiceModal({ t, rows, exchangeRate, onClose }) {
 
   const downloadPng = async () => {
     if (!sheetRef.current) return;
-    const canvas = await html2canvas(sheetRef.current, { scale: 2 });
+    const canvas = await html2canvas(sheetRef.current, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+    });
     const a = document.createElement('a');
     a.download = '통합_견적서.png';
     a.href = canvas.toDataURL('image/png');
@@ -267,24 +281,36 @@ export function CombinedInvoiceModal({ t, rows, exchangeRate, onClose }) {
         </button>
       </div>
 
-      <div ref={sheetRef} className="sub-card" style={{ background: '#fff' }}>
+      <div
+        ref={sheetRef}
+        id="full-merged-invoice-card-node"
+        className="quote-official-sheet"
+      >
+        <OfficialQuoteHeader
+          t={t}
+          lang={lang}
+          subtitle={t('선택 항목 통합 견적', 'Combined quotation')}
+        />
+
         <div className="table-wrap">
           <table className="data-table">
             <thead>
               <tr>
                 <th>{t('이름', 'Name')}</th>
                 <th>{t('일정', 'Dates')}</th>
-                <th>{t('금액', 'Amount')}</th>
+                <th style={{ textAlign: 'right' }}>{t('금액', 'Amount')}</th>
               </tr>
             </thead>
             <tbody>
               {(rows || []).map((r) => (
                 <tr key={`${r.resId}_r${r.roomIdx}_g${r.guestIdx}`}>
-                  <td>{r.name}</td>
+                  <td style={{ fontWeight: 800 }}>
+                    {String(r.name || '').toUpperCase()}
+                  </td>
                   <td>
                     {r.startDate} ~ {r.endDate}
                   </td>
-                  <td>
+                  <td style={{ textAlign: 'right', fontWeight: 800 }}>
                     {showUSD
                       ? `$${formatMoney(r.individualTotalUSD)}`
                       : `₩${formatMoney(r.individualTotalKRW)}`}
@@ -294,13 +320,27 @@ export function CombinedInvoiceModal({ t, rows, exchangeRate, onClose }) {
             </tbody>
           </table>
         </div>
-        <p style={{ fontWeight: 900, fontSize: 18, marginTop: 12 }}>
-          {t('총 합계', 'Grand Total')}:{' '}
-          {showUSD ? `$${formatMoney(totalUSD)}` : `₩${formatMoney(totalKRW)}`}
-        </p>
-        <p style={{ color: 'var(--muted)', fontSize: 12 }}>
+
+        <div className="quote-official-total" style={{ marginTop: 14 }}>
+          <span>{t('총 합계', 'Grand Total')}</span>
+          <span>
+            {showUSD
+              ? `$${formatMoney(totalUSD)}`
+              : `₩${formatMoney(totalKRW)}`}
+          </span>
+        </div>
+        <p
+          style={{
+            color: '#8b95a1',
+            fontSize: 12,
+            fontWeight: 700,
+            marginTop: 8,
+          }}
+        >
           {t('적용 환율', 'Exchange rate')}: {formatMoney(exchangeRate)}
         </p>
+
+        <OfficialQuoteContacts t={t} lang={lang} />
       </div>
 
       <div className="sticky-action-bar-inner" style={{ marginTop: 16 }}>

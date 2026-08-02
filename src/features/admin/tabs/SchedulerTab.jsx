@@ -1,150 +1,326 @@
 import { useMemo, useState } from 'react';
-import { shiftDate } from '../../../domain/dateUtils';
-import { formatMoney } from '../../../domain/pricing';
+import { toLocalISODate } from '../../../domain/dateUtils';
+import { bookingSeqMap, flattenGuestRows } from '../../../domain/listModel';
 
-function patchGuest(res, roomIdx, guestIdx, patch) {
-  const rooms = structuredClone(res.roomsData || []);
-  rooms[roomIdx].guests[guestIdx] = {
-    ...rooms[roomIdx].guests[guestIdx],
-    ...patch,
-  };
-  return rooms;
+const BADGE_H = 22;
+const BADGE_GAP = 3;
+
+function colorFromId(id) {
+  if (!id) return '#3182f6';
+  let hash = 0;
+  const s = String(id);
+  for (let i = 0; i < s.length; i += 1) {
+    hash = s.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hex = (hash & 0xffffff).toString(16).toUpperCase();
+  return `#${`00000${hex}`.slice(-6)}`;
+}
+
+function guestKey(row) {
+  return `${row.resId}_r${row.roomIdx}_g${row.guestIdx}`;
+}
+
+function badgeLabel(row) {
+  const name = String(row.name || '')
+    .trim()
+    .toUpperCase();
+  const seq = row.bookingSeq || '0001';
+  const extras = [];
+  if ((Number(row.funDiving) || 0) > 0) extras.push('PAX SCUBA');
+  if ((Number(row.islandHopping) || 0) > 0) extras.push('PAX HOPPING');
+  const suffix = extras.length ? ` ${extras.join(' ')}` : '';
+  return `[${seq}] ${name}${suffix}`;
+}
+
+/** Assign stable horizontal lanes so each guest stays on one row across dates. */
+function assignLanes(guests) {
+  const sorted = [...guests].sort((a, b) => {
+    const as = a.startDate || '';
+    const bs = b.startDate || '';
+    if (as !== bs) return as.localeCompare(bs);
+    const ae = a.endDate || '';
+    const be = b.endDate || '';
+    if (ae !== be) return ae.localeCompare(be);
+    return String(a.bookingSeq || '').localeCompare(String(b.bookingSeq || ''));
+  });
+
+  const lanes = new Map();
+  const laneEndDates = [];
+
+  sorted.forEach((g) => {
+    const key = guestKey(g);
+    const start = g.startDate || '';
+    const end = g.endDate || start;
+    let lane = laneEndDates.findIndex((endDate) => !endDate || endDate < start);
+    if (lane < 0) {
+      lane = laneEndDates.length;
+      laneEndDates.push(end);
+    } else {
+      laneEndDates[lane] = end;
+    }
+    lanes.set(key, lane);
+  });
+
+  return { lanes, laneCount: laneEndDates.length };
+}
+
+function MonthCalendar({
+  year,
+  month,
+  guests,
+  today,
+  t,
+  lang = 'KO',
+  onOpenGuest,
+}) {
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const startWeekday = new Date(year, month, 1).getDay();
+  const monthStart = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+  const monthEnd = `${year}-${String(month + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+
+  const monthGuests = useMemo(
+    () =>
+      guests.filter(
+        (g) =>
+          g.startDate &&
+          g.endDate &&
+          g.startDate <= monthEnd &&
+          g.endDate >= monthStart,
+      ),
+    [guests, monthStart, monthEnd],
+  );
+
+  const { lanes, laneCount } = useMemo(
+    () => assignLanes(monthGuests),
+    [monthGuests],
+  );
+
+  const cells = [];
+  for (let i = 0; i < startWeekday; i += 1) {
+    cells.push({ isBlank: true, key: `blank-${year}-${month}-${i}` });
+  }
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    cells.push({ isBlank: false, day, dateStr, key: dateStr });
+  }
+
+  const trackH =
+    laneCount > 0
+      ? laneCount * BADGE_H + Math.max(0, laneCount - 1) * BADGE_GAP
+      : 0;
+
+  return (
+    <div className="talk-calendar" style={{ marginBottom: 28 }}>
+      <div
+        style={{
+          padding: '14px 20px',
+          fontWeight: 800,
+          fontSize: 18,
+          backgroundColor: '#f9fafb',
+          borderRadius: '16px 16px 0 0',
+        }}
+      >
+        📅 {year}
+        {t('년 ', '. ')}
+        {month + 1}
+        {t('월', '')}
+      </div>
+      <div className="talk-cal-weekdays">
+        {(lang === 'EN'
+          ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+          : ['일', '월', '화', '수', '목', '금', '토']
+        ).map((d) => (
+          <div key={d} className="talk-cal-weekday">
+            {d}
+          </div>
+        ))}
+      </div>
+      <div className="talk-cal-grid">
+        {cells.map((cell) => {
+          if (cell.isBlank) {
+            return <div key={cell.key} className="talk-cal-cell-blank" />;
+          }
+
+          const dayGuests = monthGuests.filter(
+            (g) =>
+              cell.dateStr >= g.startDate && cell.dateStr <= g.endDate,
+          );
+          const byLane = new Map();
+          dayGuests.forEach((g) => {
+            byLane.set(lanes.get(guestKey(g)) ?? 0, g);
+          });
+
+          return (
+            <div key={cell.key} className="talk-cal-cell">
+              <div className="talk-cal-dayhead">
+                <span className="talk-cal-daynum">{cell.day}</span>
+                <span className="talk-cal-count">
+                  {t(
+                    `총 ${dayGuests.length}명`,
+                    `Total ${dayGuests.length}`,
+                  )}
+                </span>
+              </div>
+              <div
+                className="talk-cal-badges talk-cal-lanes"
+                style={{ minHeight: trackH || undefined }}
+              >
+                {Array.from({ length: laneCount }, (_, lane) => {
+                  const g = byLane.get(lane);
+                  if (!g) {
+                    return (
+                      <div
+                        key={`empty-${cell.dateStr}-${lane}`}
+                        className="talk-cal-lane-slot"
+                        aria-hidden
+                      />
+                    );
+                  }
+                  const key = guestKey(g);
+                  const past = cell.dateStr < today;
+                  return (
+                    <div
+                      key={`${key}-${cell.dateStr}`}
+                      className="talk-cal-badge talk-cal-lane-slot"
+                      style={{
+                        backgroundColor: past
+                          ? '#8b95a1'
+                          : colorFromId(key),
+                      }}
+                      title={`${badgeLabel(g)}\n${g.startDate} ~ ${g.endDate}`}
+                      onClick={() => onOpenGuest?.(g)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          onOpenGuest?.(g);
+                        }
+                      }}
+                    >
+                      {badgeLabel(g)}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function SchedulerTab({
   t,
+  lang = 'KO',
   reservations,
-  date,
-  setDate,
-  onUpdateReservation,
+  onOpenQuote,
 }) {
-  const [sortDesc, setSortDesc] = useState(false);
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth());
+  const today = toLocalISODate();
 
-  const rows = useMemo(() => {
-    const list = [];
-    (reservations || []).forEach((res) => {
-      (res.roomsData || []).forEach((room, roomIdx) => {
-        (room.guests || []).forEach((guest, guestIdx) => {
-          if (!guest?.startDate || !guest?.endDate) return;
-          if (date < guest.startDate || date > guest.endDate) return;
-          list.push({ res, room, roomIdx, guest, guestIdx });
-        });
-      });
+  const guests = useMemo(() => {
+    const seq = bookingSeqMap(reservations);
+    return flattenGuestRows(reservations).map((row) => ({
+      ...row,
+      bookingSeq: seq[row.resId] || row.bookingSeq || '0001',
+    }));
+  }, [reservations]);
+
+  const prevMonth = () => {
+    setMonth((m) => {
+      if (m === 0) {
+        setYear((y) => y - 1);
+        return 11;
+      }
+      return m - 1;
     });
-    list.sort((a, b) => {
-      const an = (a.guest.name || '').localeCompare(b.guest.name || '');
-      return sortDesc ? -an : an;
+  };
+
+  const nextMonth = () => {
+    setMonth((m) => {
+      if (m === 11) {
+        setYear((y) => y + 1);
+        return 0;
+      }
+      return m + 1;
     });
-    return list;
-  }, [reservations, date, sortDesc]);
+  };
+
+  const goToday = () => {
+    const d = new Date();
+    setYear(d.getFullYear());
+    setMonth(d.getMonth());
+  };
+
+  const months = [0, 1, 2].map((offset) => {
+    let m = month + offset;
+    let y = year + Math.floor(m / 12);
+    m %= 12;
+    if (m < 0) {
+      m += 12;
+      y -= 1;
+    }
+    return { year: y, month: m };
+  });
 
   return (
-    <div className="card">
-      <div className="tabs-row">
-        <div className="date-nav">
-          <button type="button" onClick={() => setDate(shiftDate(date, -1))}>
+    <div>
+      <div
+        style={{
+          marginBottom: 20,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 12,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button type="button" className="btn-secondary" onClick={prevMonth}>
             ◀
           </button>
-          <input
-            type="date"
-            className="input-field"
-            style={{ maxWidth: 200 }}
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
-          <button type="button" onClick={() => setDate(shiftDate(date, 1))}>
+          <h3 style={{ margin: 0 }}>
+            {year}
+            {t('년 ', '. ')}
+            {month + 1}
+            {t('월', '')}
+          </h3>
+          <button type="button" className="btn-secondary" onClick={nextMonth}>
             ▶
           </button>
         </div>
         <button
           type="button"
           className="btn-secondary"
-          onClick={() => setSortDesc((v) => !v)}
+          style={{ color: '#3182f6' }}
+          onClick={goToday}
         >
-          {t('집계 정렬', 'Sort')}
+          {t('오늘', 'Today')}
         </button>
       </div>
 
-      <div className="table-wrap">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>{t('이름', 'Name')}</th>
-              <th>{t('강사', 'Instructor')}</th>
-              <th>{t('라인/차량', 'Line/Vehicle')}</th>
-              <th>{t('출석 관리(패널티)', 'Attendance')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={4} style={{ textAlign: 'center', color: 'var(--muted)' }}>
-                  {t('해당 날짜 스케줄 없음', 'No schedule for this date')}
-                </td>
-              </tr>
-            ) : (
-              rows.map(({ res, guest, roomIdx, guestIdx }) => (
-                <tr key={`${res.id}-${roomIdx}-${guestIdx}`}>
-                  <td>
-                    <strong>{guest.name}</strong>
-                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-                      {guest.level} · {guest.nationality}
-                    </div>
-                  </td>
-                  <td>{res.bookingInstructor}</td>
-                  <td>
-                    <input
-                      className="input-field"
-                      style={{ marginBottom: 6 }}
-                      placeholder={t('라인', 'Line')}
-                      value={guest.assignedLine || ''}
-                      onChange={(e) =>
-                        onUpdateReservation(res.id, {
-                          roomsData: patchGuest(res, roomIdx, guestIdx, {
-                            assignedLine: e.target.value,
-                          }),
-                        })
-                      }
-                    />
-                    <input
-                      className="input-field"
-                      placeholder={t('차량', 'Vehicle')}
-                      value={guest.assignedVehicle || ''}
-                      onChange={(e) =>
-                        onUpdateReservation(res.id, {
-                          roomsData: patchGuest(res, roomIdx, guestIdx, {
-                            assignedVehicle: e.target.value,
-                          }),
-                        })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <div className="label-text" style={{ color: 'var(--danger)' }}>
-                      {t('패널티 금액', 'Penalty')}: ₩
-                      {formatMoney(guest.penaltyFee || 0)}
-                    </div>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1000"
-                      className="input-field"
-                      value={guest.penaltyFee || 0}
-                      onChange={(e) =>
-                        onUpdateReservation(res.id, {
-                          roomsData: patchGuest(res, roomIdx, guestIdx, {
-                            penaltyFee: Math.max(0, Number(e.target.value) || 0),
-                          }),
-                        })
-                      }
-                    />
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      {months.map(({ year: y, month: m }) => (
+        <MonthCalendar
+          key={`${y}-${m}`}
+          year={y}
+          month={m}
+          guests={guests}
+          today={today}
+          t={t}
+          lang={lang}
+          onOpenGuest={(row) =>
+            onOpenQuote?.({
+              resId: row.resId,
+              roomIdx: row.roomIdx,
+              guestIdx: row.guestIdx,
+              readOnly: true,
+            })
+          }
+        />
+      ))}
     </div>
   );
 }

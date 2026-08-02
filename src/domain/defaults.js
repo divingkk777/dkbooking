@@ -48,58 +48,173 @@ export const OPTION_PRICES_USD = {
   FUN_DIVING: 30,
 };
 
-/** Editable in Settings → optionPricesConfig */
-export const DEFAULT_OPTION_PRICES = {
-  TRANSFER: {
+/**
+ * Admin-managed options catalog (Settings → 옵션 설정).
+ * uiType: 'transfer' = airport pickup/dropoff checkboxes; 'count' = qty input.
+ */
+export const DEFAULT_OPTIONS_CATALOG = [
+  {
     id: 'TRANSFER',
     nameKO: '공항 픽업/드롭오프',
     nameEN: 'Airport Transfer',
-    krw: OPTION_PRICES_KRW.TRANSFER,
-    usd: OPTION_PRICES_USD.TRANSFER,
+    priceKRW: OPTION_PRICES_KRW.TRANSFER,
+    priceUSD: OPTION_PRICES_USD.TRANSFER,
     unitKO: '회',
     unitEN: 'x',
+    isActive: true,
+    uiType: 'transfer',
+    guideKey: '',
   },
-  VIDEO_PER_DAY: {
-    id: 'VIDEO_PER_DAY',
+  {
+    id: 'VIDEO',
     nameKO: '영상 촬영',
     nameEN: 'Video',
-    krw: OPTION_PRICES_KRW.VIDEO_PER_DAY,
-    usd: OPTION_PRICES_USD.VIDEO_PER_DAY,
+    priceKRW: OPTION_PRICES_KRW.VIDEO_PER_DAY,
+    priceUSD: OPTION_PRICES_USD.VIDEO_PER_DAY,
     unitKO: '회',
     unitEN: 'x',
+    isActive: true,
+    uiType: 'count',
+    guideKey: 'video',
   },
-  HOPPING: {
+  {
     id: 'HOPPING',
     nameKO: '아일랜드 호핑',
     nameEN: 'Island Hopping',
-    krw: OPTION_PRICES_KRW.HOPPING,
-    usd: OPTION_PRICES_USD.HOPPING,
+    priceKRW: OPTION_PRICES_KRW.HOPPING,
+    priceUSD: OPTION_PRICES_USD.HOPPING,
     unitKO: '회',
     unitEN: 'x',
+    isActive: true,
+    uiType: 'count',
+    guideKey: 'hopping',
   },
-  FUN_DIVING: {
+  {
     id: 'FUN_DIVING',
     nameKO: '펀다이빙',
     nameEN: 'Fun Diving',
-    krw: OPTION_PRICES_KRW.FUN_DIVING,
-    usd: OPTION_PRICES_USD.FUN_DIVING,
+    priceKRW: OPTION_PRICES_KRW.FUN_DIVING,
+    priceUSD: OPTION_PRICES_USD.FUN_DIVING,
     unitKO: '회',
     unitEN: 'x',
+    isActive: true,
+    uiType: 'count',
+    guideKey: 'fundiving',
   },
-};
+];
 
+/** @deprecated use DEFAULT_OPTIONS_CATALOG — kept for older imports */
+export const DEFAULT_OPTION_PRICES = Object.fromEntries(
+  DEFAULT_OPTIONS_CATALOG.map((o) => [
+    o.id === 'VIDEO' ? 'VIDEO_PER_DAY' : o.id,
+    {
+      id: o.id === 'VIDEO' ? 'VIDEO_PER_DAY' : o.id,
+      nameKO: o.nameKO,
+      nameEN: o.nameEN,
+      krw: o.priceKRW,
+      usd: o.priceUSD,
+      unitKO: o.unitKO,
+      unitEN: o.unitEN,
+    },
+  ]),
+);
+
+function normalizeOptionRow(row = {}, fallback = {}) {
+  const id = String(row.id || fallback.id || `OPT_${Date.now()}`).trim();
+  const uiType =
+    row.uiType === 'transfer' || id === 'TRANSFER' ? 'transfer' : 'count';
+  return {
+    id,
+    nameKO: row.nameKO || row.name || fallback.nameKO || id,
+    nameEN: row.nameEN || row.name || fallback.nameEN || id,
+    priceKRW: Number(row.priceKRW ?? row.krw ?? fallback.priceKRW) || 0,
+    priceUSD: Number(row.priceUSD ?? row.usd ?? fallback.priceUSD) || 0,
+    unitKO: row.unitKO || fallback.unitKO || '회',
+    unitEN: row.unitEN || fallback.unitEN || 'x',
+    isActive: row.isActive !== false,
+    uiType,
+    guideKey: row.guideKey || fallback.guideKey || '',
+  };
+}
+
+/** Accepts array catalog or legacy object map. */
+export function resolveOptionsCatalog(config) {
+  if (Array.isArray(config) && config.length) {
+    return config.map((row) => normalizeOptionRow(row));
+  }
+  if (config && typeof config === 'object' && !Array.isArray(config)) {
+    const fromLegacy = DEFAULT_OPTIONS_CATALOG.map((def) => {
+      const legacyKey = def.id === 'VIDEO' ? 'VIDEO_PER_DAY' : def.id;
+      const row = config[def.id] || config[legacyKey] || {};
+      return normalizeOptionRow(
+        {
+          ...def,
+          priceKRW: row.krw ?? row.priceKRW ?? def.priceKRW,
+          priceUSD: row.usd ?? row.priceUSD ?? def.priceUSD,
+          nameKO: row.nameKO || def.nameKO,
+          nameEN: row.nameEN || def.nameEN,
+        },
+        def,
+      );
+    });
+    return fromLegacy;
+  }
+  return DEFAULT_OPTIONS_CATALOG.map((o) => ({ ...o }));
+}
+
+/** Map for transfer/legacy lookups: TRANSFER, VIDEO, VIDEO_PER_DAY, … */
 export function resolveOptionPrices(config) {
+  const catalog = resolveOptionsCatalog(config);
   const out = {};
-  for (const key of Object.keys(DEFAULT_OPTION_PRICES)) {
-    const def = DEFAULT_OPTION_PRICES[key];
-    const row = config && typeof config === 'object' ? config[key] : null;
-    out[key] = {
-      ...def,
-      krw: Number(row?.krw ?? row?.priceKRW ?? def.krw) || 0,
-      usd: Number(row?.usd ?? row?.priceUSD ?? def.usd) || 0,
+  for (const o of catalog) {
+    const entry = {
+      id: o.id,
+      nameKO: o.nameKO,
+      nameEN: o.nameEN,
+      krw: o.priceKRW,
+      usd: o.priceUSD,
+      unitKO: o.unitKO,
+      unitEN: o.unitEN,
+      isActive: o.isActive,
+      uiType: o.uiType,
+      guideKey: o.guideKey,
     };
+    out[o.id] = entry;
+    if (o.id === 'VIDEO') out.VIDEO_PER_DAY = { ...entry, id: 'VIDEO_PER_DAY' };
+  }
+  for (const def of DEFAULT_OPTIONS_CATALOG) {
+    if (!out[def.id]) {
+      out[def.id] = {
+        id: def.id,
+        nameKO: def.nameKO,
+        nameEN: def.nameEN,
+        krw: def.priceKRW,
+        usd: def.priceUSD,
+        unitKO: def.unitKO,
+        unitEN: def.unitEN,
+        isActive: def.isActive,
+        uiType: def.uiType,
+        guideKey: def.guideKey,
+      };
+    }
+  }
+  if (out.VIDEO && !out.VIDEO_PER_DAY) {
+    out.VIDEO_PER_DAY = { ...out.VIDEO, id: 'VIDEO_PER_DAY' };
   }
   return out;
+}
+
+export function getGuestOptionQty(guest, optionId) {
+  if (!guest) return 0;
+  const counts = guest.optionCounts || {};
+  if (counts[optionId] != null) return Math.max(0, Number(counts[optionId]) || 0);
+  if (optionId === 'VIDEO' || optionId === 'VIDEO_PER_DAY') {
+    if (Number(guest.videoCount) > 0) return Number(guest.videoCount);
+    return guest.needsVideo ? 1 : 0;
+  }
+  if (optionId === 'HOPPING') return Math.max(0, Number(guest.islandHopping) || 0);
+  if (optionId === 'FUN_DIVING') return Math.max(0, Number(guest.funDiving) || 0);
+  return 0;
 }
 
 export const DIVER_LEVELS = ['LEVEL_1', 'LEVEL_2', 'LEVEL_3', 'LEVEL_4', 'INSTRUCTOR'];
@@ -148,6 +263,7 @@ export function createEmptyGuest() {
     restDays: 0,
     trainingCounts: { ...EMPTY_TRAINING_COUNTS },
     trainingDiscounts: { ...EMPTY_TRAINING_DISCOUNTS },
+    optionCounts: {},
     discipline: 'CWT',
     targetDepth: '',
     safetyInstructor: '',
@@ -205,6 +321,7 @@ export function copyGuestDetailsFrom(source, { name = '' } = {}) {
       ...EMPTY_TRAINING_DISCOUNTS,
       ...(cloned.trainingDiscounts || {}),
     },
+    optionCounts: { ...(cloned.optionCounts || {}) },
   };
 }
 
@@ -247,10 +364,57 @@ export const DEFAULT_DRIVERS = [
 ];
 
 export const DEFAULT_ACCOUNTS = [
-  { id: 'acc1', name: 'IDA', isActive: true },
-  { id: 'acc2', name: 'CASABLUE', isActive: true },
-  { id: 'acc3', name: 'CEBU', isActive: true },
+  { id: 'acc1', name: 'IDA bank', isActive: true },
+  { id: 'acc2', name: 'IDA Wise', isActive: true },
+  { id: 'acc3', name: 'IDA 현장', isActive: true },
+  { id: 'acc4', name: 'CASABLUE', isActive: true },
+  { id: 'acc5', name: 'OTHER', isActive: true },
 ];
+
+/** Admin-created escort / promo codes applied to training on step 3. */
+export const DEFAULT_PROMO_CODES = [];
+
+export function resolvePromoCodesConfig(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((p) => p && String(p.code || '').trim())
+    .map((p) => ({
+      id: p.id || `PROMO_${Date.now()}`,
+      code: String(p.code || '')
+        .trim()
+        .toUpperCase(),
+      nameKO: p.nameKO || p.name || p.code || '',
+      nameEN: p.nameEN || p.nameKO || p.name || p.code || '',
+      isActive: p.isActive !== false,
+      discountType: p.discountType === 'amount' ? 'amount' : 'percent',
+      discountValue: Number(p.discountValue) || 0,
+      discountUSD: Number(p.discountUSD) || 0,
+      trainingScope:
+        p.trainingScope === 'ALL' || !p.trainingScope
+          ? 'ALL'
+          : Array.isArray(p.trainingScope)
+            ? p.trainingScope
+            : 'ALL',
+    }));
+}
+
+export function resolvePromoCode(promoCodes, code) {
+  const needle = String(code || '')
+    .trim()
+    .toUpperCase();
+  if (!needle) return null;
+  const list = Array.isArray(promoCodes) ? promoCodes : [];
+  return (
+    list.find(
+      (p) =>
+        p &&
+        p.isActive !== false &&
+        String(p.code || '')
+          .trim()
+          .toUpperCase() === needle,
+    ) || null
+  );
+}
 
 export const HOTEL_INFO = {
   name: 'Hotel Casablu',

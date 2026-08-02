@@ -8,12 +8,14 @@ import {
   STORAGE_KEYS,
 } from '../../domain/defaults';
 import {
+  buildPricingExtras,
   formatPricePair,
   processRoomsData,
 } from '../../domain/pricing';
 import { addAdminLog } from '../../data/logsRepo';
 import { createReservation } from '../../data/reservationsRepo';
 import { createTranslator } from '../../i18n/t';
+import BrandLockup from '../../components/BrandLockup';
 import RollingBanner from '../../components/RollingBanner';
 import {
   clearGuestSession,
@@ -27,6 +29,7 @@ import {
   watchGuestAuth,
 } from '../../lib/guestAuth';
 import RoomsDiversForm from '../booking/RoomsDiversForm';
+import GuestBillingSummary from './GuestBillingSummary';
 import StepIndicator from '../../ui/StepIndicator';
 import StickyActionBar from '../../ui/StickyActionBar';
 import { useToast } from '../../ui/ToastContext';
@@ -57,6 +60,12 @@ export default function GuestApp({ settings }) {
   const [roomCount, setRoomCount] = useState(1);
   const [roomsData, setRoomsData] = useState([createEmptyRoom(1)]);
   const [agreed, setAgreed] = useState(false);
+  const [consents, setConsents] = useState({
+    privacy: false,
+    marketing: false,
+    portrait: false,
+  });
+  const [escortCode, setEscortCode] = useState('');
   const [drawing, setDrawing] = useState(false);
   const canvasRef = useRef(null);
   const hasStroke = useRef(false);
@@ -132,9 +141,10 @@ export default function GuestApp({ settings }) {
         settings.exchangeRate,
         settings.roomTypesConfig,
         settings.trainingTypesConfig,
-        settings.optionPricesConfig,
+        settings.optionsCatalogConfig || settings.optionPricesConfig,
+        buildPricingExtras(settings, escortCode),
       ),
-    [roomsData, settings],
+    [roomsData, settings, escortCode],
   );
 
   const enterBooking = (next) => {
@@ -228,6 +238,15 @@ export default function GuestApp({ settings }) {
       toast.warn(t('4자리 PIN을 입력하세요.', 'Enter 4-digit PIN.'));
       return false;
     }
+    if (!consents.privacy) {
+      toast.warn(
+        t(
+          '개인정보 수집·이용 동의는 필수입니다.',
+          'Privacy consent is required.',
+        ),
+      );
+      return false;
+    }
     localStorage.setItem(
       STORAGE_KEYS.lastBookingInstructor,
       bookingInstructor,
@@ -236,90 +255,148 @@ export default function GuestApp({ settings }) {
     return true;
   };
 
-  const validateStep2 = () => {
-    for (let ri = 0; ri < roomsData.length; ri += 1) {
-      const room = roomsData[ri];
+  const collectStep2Errors = (rooms) => {
+    const errors = {};
+    const messages = [];
+    const mark = (key, msg) => {
+      errors[key] = true;
+      if (msg) messages.push(msg);
+    };
+
+    for (let ri = 0; ri < rooms.length; ri += 1) {
+      const room = rooms[ri];
       if (!room.roomType) {
-        toast.warn(
+        mark(
+          `room:${ri}:roomType`,
           t(`객실 ${ri + 1} 타입을 선택하세요.`, `Select room ${ri + 1} type.`),
         );
-        return false;
       }
       for (let gi = 0; gi < (room.guests || []).length; gi += 1) {
         const g = room.guests[gi];
-        if (!g.name || !g.nationality || !g.startDate || !g.endDate) {
-          toast.warn(
+        const d = gi + 1;
+        const gk = (field) => `guest:${ri}:${gi}:${field}`;
+
+        let basicMissing = false;
+        if (!String(g.name || '').trim()) {
+          mark(gk('name'));
+          basicMissing = true;
+        }
+        if (!String(g.nationality || '').trim()) {
+          mark(gk('nationality'));
+          basicMissing = true;
+        }
+        if (!g.startDate) {
+          mark(gk('startDate'));
+          basicMissing = true;
+        }
+        if (!g.endDate) {
+          mark(gk('endDate'));
+          basicMissing = true;
+        }
+        if (basicMissing) {
+          messages.push(
             t(
-              `다이버 ${gi + 1} 필수 정보를 입력하세요.`,
-              `Fill required fields for diver ${gi + 1}.`,
+              `다이버 ${d} 필수 정보를 입력하세요.`,
+              `Fill required fields for diver ${d}.`,
             ),
           );
-          return false;
         }
-        if (!g.discipline || g.targetDepth === '' || g.targetDepth == null) {
-          toast.warn(
+
+        let diveMissing = false;
+        if (!g.discipline) {
+          mark(gk('discipline'));
+          diveMissing = true;
+        }
+        if (g.targetDepth === '' || g.targetDepth == null) {
+          mark(gk('targetDepth'));
+          diveMissing = true;
+        }
+        if (diveMissing) {
+          messages.push(
             t(
-              `다이버 ${gi + 1} 종목과 목표수심을 입력하세요.`,
-              `Select discipline and target depth for diver ${gi + 1}.`,
+              `다이버 ${d} 종목과 목표수심을 입력하세요.`,
+              `Select discipline and target depth for diver ${d}.`,
             ),
           );
-          return false;
         }
+
         const counts = g.trainingCounts || {};
         const totalTrain = Object.values(counts).reduce(
           (a, b) => a + (Number(b) || 0),
           0,
         );
-        if (totalTrain <= 0 && !(g.funDiving > 0)) {
-          toast.warn(
+        const funQty =
+          Number(g.funDiving) || Number(g.optionCounts?.FUN_DIVING) || 0;
+        if (totalTrain <= 0 && funQty <= 0) {
+          mark(
+            gk('training'),
             t(
-              `다이버 ${gi + 1} 트레이닝/펀다이빙을 선택하세요.`,
-              `Select training/fun diving for diver ${gi + 1}.`,
+              `다이버 ${d} 트레이닝/펀다이빙을 선택하세요.`,
+              `Select training/fun diving for diver ${d}.`,
             ),
           );
-          return false;
         }
         if ((counts.SELF_60 || 0) > 0) {
           if (!g.safetyInstructor?.trim()) {
-            toast.warn(
+            mark(
+              gk('safetyInstructor'),
               t(
-                `다이버 ${gi + 1} 세이프티 강사명을 입력하세요.`,
-                `Safety instructor required for diver ${gi + 1}.`,
+                `다이버 ${d} 세이프티 강사명을 입력하세요.`,
+                `Safety instructor required for diver ${d}.`,
               ),
             );
-            return false;
           }
           if (!g.agreeSelf60) {
-            toast.warn(
+            mark(
+              gk('agreeSelf60'),
               t(
-                `다이버 ${gi + 1} 셀프 트레이닝 동의에 체크하세요.`,
-                `Check self-training agreement for diver ${gi + 1}.`,
+                `다이버 ${d} 셀프 트레이닝 동의에 체크하세요.`,
+                `Check self-training agreement for diver ${d}.`,
               ),
             );
-            return false;
           }
         }
         if (g.airportPickup && !String(g.pickupFlight || '').trim()) {
-          toast.warn(
+          mark(
+            gk('pickupFlight'),
             t(
-              `다이버 ${gi + 1} 픽업 항공편명을 입력하세요.`,
-              `Enter pickup flight for diver ${gi + 1}.`,
+              `다이버 ${d} 픽업 항공편명을 입력하세요.`,
+              `Enter pickup flight for diver ${d}.`,
             ),
           );
-          return false;
         }
         if (g.airportDropoff && !String(g.dropoffFlight || '').trim()) {
-          toast.warn(
+          mark(
+            gk('dropoffFlight'),
             t(
-              `다이버 ${gi + 1} 드롭오프 항공편명을 입력하세요.`,
-              `Enter dropoff flight for diver ${gi + 1}.`,
+              `다이버 ${d} 드롭오프 항공편명을 입력하세요.`,
+              `Enter dropoff flight for diver ${d}.`,
             ),
           );
-          return false;
         }
       }
     }
-    return true;
+    return { errors, messages };
+  };
+
+  const validateStep2 = () => {
+    const { errors, messages } = collectStep2Errors(roomsData);
+    const keys = Object.keys(errors);
+    if (keys.length === 0) return true;
+
+    const uniqueMsgs = [...new Set(messages.filter(Boolean))];
+    toast.warn(
+      uniqueMsgs[0] +
+        (keys.length > 1
+          ? t(` (미입력 ${keys.length}건)`, ` (${keys.length} missing)`)
+          : ''),
+    );
+    requestAnimationFrame(() => {
+      document
+        .querySelector('[data-field-error="1"]')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    return false;
   };
 
   const clearCanvas = () => {
@@ -392,6 +469,10 @@ export default function GuestApp({ settings }) {
         adminMemo: '',
         signatureData: canvasRef.current.toDataURL(),
         submittedAt,
+        consents: { ...consents },
+        escortCode: String(escortCode || '')
+          .trim()
+          .toUpperCase(),
       };
       await createReservation(payload);
       await addAdminLog({
@@ -436,6 +517,8 @@ export default function GuestApp({ settings }) {
       setRoomCount(1);
       setGroupPin('');
       setAgreed(false);
+      setConsents({ privacy: false, marketing: false, portrait: false });
+      setEscortCode('');
       clearCanvas();
     } catch (err) {
       toast.error(err.message || t('저장 실패', 'Submit failed'));
@@ -536,6 +619,9 @@ export default function GuestApp({ settings }) {
             </Link>
           </div>
         </div>
+        <footer className="site-brand-footer">
+          <BrandLockup variant="footer" showTagline={false} />
+        </footer>
       </div>
     );
   }
@@ -551,7 +637,12 @@ export default function GuestApp({ settings }) {
           marginBottom: 12,
         }}
       >
-        <strong>IDA CEBU DK</strong>
+        <strong style={{ fontSize: 13, color: '#4e5968' }}>
+          {t(
+            '당신의 다이빙 여정을 계획 해보세요',
+            'Plan your diving journey',
+          )}
+        </strong>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <div className="lang-switch">
             <button
@@ -658,6 +749,73 @@ export default function GuestApp({ settings }) {
               </select>
             </div>
           </div>
+
+          <div
+            className="sub-card"
+            style={{ marginTop: 16, marginBottom: 0, fontSize: 13 }}
+          >
+            <label className="check-label" style={{ marginTop: 0, fontWeight: 800 }}>
+              <input
+                type="checkbox"
+                checked={
+                  !!consents.privacy &&
+                  !!consents.marketing &&
+                  !!consents.portrait
+                }
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setConsents({
+                    privacy: on,
+                    marketing: on,
+                    portrait: on,
+                  });
+                }}
+              />
+              {t('모두 동의합니다', 'I agree to all')}
+              <span className="required-star"> *</span>
+            </label>
+            <ul
+              style={{
+                margin: '10px 0 0',
+                paddingLeft: 22,
+                color: '#6b7684',
+                lineHeight: 1.55,
+              }}
+            >
+              <li>
+                {t(
+                  '(필수) 개인정보 수집·이용에 동의합니다.',
+                  '(Required) I agree to the collection and use of personal information.',
+                )}
+              </li>
+              <li>
+                {t(
+                  '마케팅 정보 수신에 동의합니다.',
+                  'I agree to receive marketing information.',
+                )}
+              </li>
+              <li>
+                {t(
+                  '사진·영상 등 초상권 활용에 동의합니다.',
+                  'I agree to the use of my likeness in photos/videos.',
+                )}
+              </li>
+            </ul>
+            <div
+              style={{
+                marginTop: 10,
+                color: '#f04452',
+                fontWeight: 700,
+                fontSize: 12,
+                lineHeight: 1.45,
+              }}
+            >
+              {t(
+                '미동의시 서비스 사항에 제한이 있을 수 있습니다. 현장에서 동의 하지 않음을 메니저에게 요청 하세요',
+                'Service may be limited if you do not agree. Please ask the manager on-site if you do not consent.',
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -671,6 +829,7 @@ export default function GuestApp({ settings }) {
           roomTypes={settings.roomTypesConfig}
           trainingTypes={settings.trainingTypesConfig}
           optionPrices={settings.optionPricesConfig}
+          optionsCatalog={settings.optionsCatalogConfig}
           safetyInstructors={(settings.safetyInstructorsConfig || []).map(
             (s) => s.name || s,
           )}
@@ -695,40 +854,58 @@ export default function GuestApp({ settings }) {
             </p>
             <p>
               {t(
-                '체크인 8일 전까지: 무료 취소 가능 / 7일 전부터: 취소·환불 불가',
-                'Up to 8 days before check-in: free cancel / From 7 days: non-refundable',
+                '체크인 8일 전까지: 무료 취소 가능',
+                'Up to 8 days before check-in: free cancellation available',
               )}
             </p>
             <p>
               {t(
-                '당일 취소: 취소 불가 (100% 차감 적용)',
-                'Same-day cancellation: non-refundable (100% charged)',
+                '7일 전부터: 룸에 대한 금액 환불·취소 불가',
+                'From 7 days before check-in: room charges are non-refundable / non-cancellable',
               )}
             </p>
-          </div>
-
-          <div className="sub-card">
-            <strong>
-              {t('개별 청구 내역서', 'Individual Billing Summary')}
-            </strong>
-            <p style={{ marginBottom: 0 }}>
-              {t('합계', 'Total')}:{' '}
-              {formatPricePair(
-                lang,
-                processed.grandTotalKRW,
-                processed.grandTotalUSD,
+            <p>
+              {t(
+                '다이빙 당일 취소: 취소 불가 (100% 차감 적용)',
+                'Same-day diving cancellation: not allowed (100% charged)',
               )}
             </p>
+            <label
+              className="check-label"
+              style={{
+                marginTop: 12,
+                marginBottom: 0,
+                padding: '10px 12px',
+                borderRadius: 10,
+                border: agreed
+                  ? '1.5px solid #0ca678'
+                  : '1.5px solid var(--line)',
+                background: agreed ? '#e6fcf5' : '#fff',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={agreed}
+                onChange={(e) => setAgreed(e.target.checked)}
+              />
+              {t(
+                '위 취소 및 환불 규정에 동의합니다.',
+                'I agree to the cancellation and refund policy above.',
+              )}
+              <span className="required-star"> *</span>
+            </label>
           </div>
 
-          <label className="check-label" style={{ marginBottom: 12 }}>
-            <input
-              type="checkbox"
-              checked={agreed}
-              onChange={(e) => setAgreed(e.target.checked)}
-            />
-            {t('위 규정에 동의합니다.', 'I agree to the policy above.')}
-          </label>
+          <GuestBillingSummary
+            t={t}
+            lang={lang}
+            processed={processed}
+            roomsData={roomsData}
+            setRoomsData={setRoomsData}
+            settings={settings}
+            escortCode={escortCode}
+            setEscortCode={setEscortCode}
+          />
 
           <div className="label-text">{t('전자 서명', 'Signature')}</div>
           <canvas
@@ -785,6 +962,10 @@ export default function GuestApp({ settings }) {
           submit();
         }}
       />
+
+      <footer className="site-brand-footer">
+        <BrandLockup variant="footer" showTagline={false} />
+      </footer>
     </div>
   );
 }

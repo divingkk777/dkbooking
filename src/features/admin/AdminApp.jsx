@@ -9,7 +9,12 @@ import {
   trashGuestStub,
   updateReservation,
 } from '../../data/reservationsRepo';
-import { addAdminLog, markLogRead, subscribeLogs } from '../../data/logsRepo';
+import {
+  addAdminLog,
+  setLogRead,
+  subscribeLogs,
+} from '../../data/logsRepo';
+import BrandLockup from '../../components/BrandLockup';
 import { patchSettings } from '../../data/settingsRepo';
 import {
   DEFAULT_GROUP_PIN,
@@ -17,7 +22,7 @@ import {
 } from '../../domain/defaults';
 import { toLocalISODate } from '../../domain/dateUtils';
 import { removeGuestFromRooms } from '../../domain/listModel';
-import { processRoomsData } from '../../domain/pricing';
+import { buildPricingExtras, processRoomsData } from '../../domain/pricing';
 import { createTranslator } from '../../i18n/t';
 import { useToast } from '../../ui/ToastContext';
 import EditReservationModal from './EditReservationModal';
@@ -32,16 +37,16 @@ import SchedulerTab from './tabs/SchedulerTab';
 import SettingsTab from './tabs/SettingsTab';
 
 const TABS = [
-  { id: 'LIST', ko: '예약 목록', en: 'Reservations' },
-  { id: 'MANIFEST', ko: '승선 명부', en: 'Boat Manifest' },
-  { id: 'TRANSPORT', ko: '랜드행 명부', en: 'Transport' },
-  { id: 'HOTEL', ko: '호텔 부킹', en: 'Hotel Booking' },
-  { id: 'SCHEDULER', ko: '스케줄러', en: 'Scheduler' },
-  { id: 'DASHBOARD', ko: '대시보드', en: 'Dashboard' },
-  { id: 'ADS', ko: '광고', en: 'Ads' },
-  { id: 'LOGS', ko: '로그', en: 'Logs' },
-  { id: 'ARCHIVE', ko: '휴지통', en: 'Archive' },
-  { id: 'SETTINGS', ko: '설정 대시보드', en: 'Settings' },
+  { id: 'LIST', emoji: '📋', ko: '예약 목록', en: 'Reservations' },
+  { id: 'MANIFEST', emoji: '🚤', ko: '승선 명부', en: 'Boat Manifest' },
+  { id: 'TRANSPORT', emoji: '🚐', ko: '픽업/드랍', en: 'Pickup/Drop' },
+  { id: 'HOTEL', emoji: '🏨', ko: '호텔 부킹', en: 'Hotel Booking' },
+  { id: 'SCHEDULER', emoji: '🗓️', ko: '스케줄러', en: 'Scheduler' },
+  { id: 'DASHBOARD', emoji: '📊', ko: '통계', en: 'Statistics' },
+  { id: 'ADS', emoji: '📢', ko: '광고', en: 'Ads' },
+  { id: 'LOGS', emoji: '📝', ko: '로그', en: 'Logs' },
+  { id: 'ARCHIVE', emoji: '🗑️', ko: '휴지통', en: 'Trash' },
+  { id: 'SETTINGS', emoji: '⚙️', ko: '설정', en: 'Settings' },
 ];
 
 function todayISO() {
@@ -280,16 +285,28 @@ export default function AdminApp({ settings }) {
           }
           if (role === 'INSTRUCTOR' && item.id === 'ADS') return false;
           return true;
-        }).map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className={tab === item.id ? 'active' : ''}
-            onClick={() => setTab(item.id)}
-          >
-            {t(item.ko, item.en)}
-          </button>
-        ))}
+        }).map((item) => {
+          const isTrash = item.id === 'ARCHIVE';
+          const trashCount = trashed?.length || 0;
+          const classes = [
+            tab === item.id ? 'active' : '',
+            isTrash ? 'nav-trash' : '',
+            isTrash && trashCount > 0 ? 'has-items' : '',
+          ]
+            .filter(Boolean)
+            .join(' ');
+          return (
+            <button
+              key={item.id}
+              type="button"
+              className={classes}
+              onClick={() => setTab(item.id)}
+            >
+              {item.emoji} {t(item.ko, item.en)}
+              {isTrash ? ` (${trashCount})` : ''}
+            </button>
+          );
+        })}
       </nav>
 
       {tab === 'LIST' && (
@@ -329,7 +346,8 @@ export default function AdminApp({ settings }) {
                   settings.exchangeRate,
                   settings.roomTypesConfig,
                   settings.trainingTypesConfig,
-                  settings.optionPricesConfig,
+                  settings.optionsCatalogConfig || settings.optionPricesConfig,
+                  buildPricingExtras(settings, reservation.escortCode),
                 );
                 await updateReservation(reservation.id, {
                   roomsData: next.processedRooms,
@@ -341,8 +359,8 @@ export default function AdminApp({ settings }) {
                 }
               }
               await addAdminLog({
-                type: 'EDIT',
-                message: `[게스트 취소] ${guestName || ''} (${reservation.repName || ''}) 예약이 취소되었습니다.`,
+                type: 'DELETE',
+                message: `[예약 취소] ${guestName || ''} 다이버의 예약이 휴지통으로 이동되었습니다.`,
               });
               toast.success(t('게스트가 취소되었습니다.', 'Guest cancelled.'));
             } catch (e) {
@@ -355,10 +373,16 @@ export default function AdminApp({ settings }) {
       {(tab === 'MANIFEST' || tab === 'TRANSPORT') && (
         <ManifestTab
           t={t}
+          lang={lang}
           mode={tab === 'TRANSPORT' ? 'transport' : 'boat'}
           reservations={visibleReservations}
           date={manifestDate}
           setDate={setManifestDate}
+          role={role}
+          settings={settings}
+          onUpdateReservation={async (id, partial) => {
+            await updateReservation(id, partial);
+          }}
         />
       )}
 
@@ -378,12 +402,9 @@ export default function AdminApp({ settings }) {
       {tab === 'SCHEDULER' && (
         <SchedulerTab
           t={t}
+          lang={lang}
           reservations={visibleReservations}
-          date={manifestDate}
-          setDate={setManifestDate}
-          onUpdateReservation={async (id, partial) => {
-            await updateReservation(id, partial);
-          }}
+          onOpenQuote={setQuoteTarget}
         />
       )}
 
@@ -411,8 +432,8 @@ export default function AdminApp({ settings }) {
           t={t}
           logs={logs}
           trashed={trashed}
-          onMarkRead={async (id) => {
-            await markLogRead(id);
+          onToggleRead={async (id, isRead) => {
+            await setLogRead(id, isRead);
           }}
           onRestore={async (item) => {
             await restoreFromTrash(item);
@@ -462,6 +483,10 @@ export default function AdminApp({ settings }) {
           onSaved={() => setEditTarget(null)}
         />
       )}
+
+      <footer className="site-brand-footer">
+        <BrandLockup variant="footer" showTagline={false} />
+      </footer>
     </div>
   );
 }

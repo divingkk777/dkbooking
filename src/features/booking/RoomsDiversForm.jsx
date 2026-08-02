@@ -1,12 +1,21 @@
-import { useEffect, useState } from 'react';
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import {
   copyGuestDetailsFrom,
   createEmptyGuest,
   DISCIPLINES,
+  getGuestOptionQty,
   HOUR_OPTIONS,
   maxGuestsForRoomType,
   normalizeHourTime,
   resolveOptionPrices,
+  resolveOptionsCatalog,
 } from '../../domain/defaults';
 import { toLocalISODate } from '../../domain/dateUtils';
 import {
@@ -16,23 +25,59 @@ import {
   formatPricePair,
 } from '../../domain/pricing';
 import { useToast } from '../../ui/ToastContext';
+import { buildStep2FieldLights } from './step2FieldLights';
 
-function Field({ label, required, children }) {
+function Field({ label, required, error, onActivate, children }) {
+  const bindActivate = (child) => {
+    if (!isValidElement(child)) return child;
+    const wrap = (handler) => (e) => {
+      onActivate?.();
+      handler?.(e);
+    };
+    if (child.type === 'input' || child.type === 'select') {
+      return cloneElement(child, {
+        className: [child.props.className, error ? 'input-field-error' : '']
+          .filter(Boolean)
+          .join(' '),
+        'data-field-error': error ? '1' : undefined,
+        onFocus: wrap(child.props.onFocus),
+        onClick: wrap(child.props.onClick),
+      });
+    }
+    if (child.type === HourSelect) {
+      return cloneElement(child, {
+        error,
+        onActivate,
+      });
+    }
+    return child;
+  };
+
   return (
-    <div className="field">
+    <div className={`field${error ? ' field--error' : ''}`}>
       <label className="label-text">
         {label}
         {required ? <span className="required-star"> *</span> : null}
       </label>
-      {children}
+      {Children.map(children, (child) => {
+        if (!isValidElement(child)) return child;
+        return bindActivate(child);
+      })}
     </div>
   );
 }
 
-function HourSelect({ value, fallback, onChange }) {
+function HourSelect({ value, fallback, onChange, error, onActivate }) {
   const normalized = normalizeHourTime(value, fallback);
   return (
-    <select className="input-field" value={normalized} onChange={onChange}>
+    <select
+      className={`input-field${error ? ' input-field-error' : ''}`}
+      value={normalized}
+      onChange={onChange}
+      onFocus={() => onActivate?.()}
+      onClick={() => onActivate?.()}
+      data-field-error={error ? '1' : undefined}
+    >
       {HOUR_OPTIONS.map((h) => (
         <option key={h} value={h}>
           {h}
@@ -55,15 +100,109 @@ export default function RoomsDiversForm({
   roomTypes,
   trainingTypes,
   optionPrices: optionPricesProp,
+  optionsCatalog: optionsCatalogProp,
   safetyInstructors = [],
   processed,
 }) {
   const toast = useToast();
   const today = toLocalISODate();
-  const optionPrices = resolveOptionPrices(optionPricesProp);
+  const optionsCatalog = resolveOptionsCatalog(
+    optionsCatalogProp || optionPricesProp,
+  );
+  const optionPrices = resolveOptionPrices(optionsCatalog);
+  const countOptions = optionsCatalog.filter(
+    (o) => o.uiType !== 'transfer' && o.isActive !== false,
+  );
+  const transferOption = optionsCatalog.find(
+    (o) => o.uiType === 'transfer' && o.isActive !== false,
+  );
   const price = (krw, usd) => formatPricePair(lang, krw, usd);
   const [sameMode, setSameMode] = useState({});
   const [detailsOpen, setDetailsOpen] = useState({});
+  const [touched, setTouched] = useState({});
+  const touch = (key) => {
+    if (!key) return;
+    setTouched((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
+  };
+  const fieldLights = useMemo(
+    () =>
+      buildStep2FieldLights({
+        roomsData,
+        trainingTypes,
+        countOptions,
+        touched,
+      }),
+    [roomsData, trainingTypes, countOptions, touched],
+  );
+  const err = (key) => !!fieldLights[key];
+  const guestErr = (roomIdx, guestIdx, field) =>
+    err(`guest:${roomIdx}:${guestIdx}:${field}`);
+  const guestKey = (roomIdx, guestIdx, field) =>
+    `guest:${roomIdx}:${guestIdx}:${field}`;
+
+  const setOptionCount = (roomIdx, guestIdx, option, rawValue) => {
+    const next = Math.max(0, Number(rawValue) || 0);
+    const prevGuest = roomsData[roomIdx]?.guests?.[guestIdx];
+    const prevQty =
+      Number(
+        prevGuest?.optionCounts?.[option.id] ??
+          (option.id === 'FUN_DIVING' ? prevGuest?.funDiving : 0) ??
+          0,
+      ) || 0;
+    touch(guestKey(roomIdx, guestIdx, `opt:${option.id}`));
+
+    setRoomsData((prev) =>
+      prev.map((room, i) => {
+        if (i !== roomIdx) return room;
+        const guests = [...(room.guests || [])];
+        const g = { ...guests[guestIdx] };
+        g.optionCounts = { ...(g.optionCounts || {}), [option.id]: next };
+        if (option.id === 'VIDEO' || option.id === 'VIDEO_PER_DAY') {
+          g.videoCount = next;
+          g.needsVideo = next > 0;
+        }
+        if (option.id === 'HOPPING') g.islandHopping = next;
+        if (option.id === 'FUN_DIVING') g.funDiving = next;
+        guests[guestIdx] = g;
+        return { ...room, guests };
+      }),
+    );
+
+    const guide = option.guideKey || '';
+    if (guide === 'video') {
+      window.alert(
+        buildVideoGuideAlert({
+          lang,
+          count: next,
+          optionPrices: {
+            VIDEO_PER_DAY: {
+              krw: option.priceKRW,
+              usd: option.priceUSD,
+            },
+          },
+          t,
+        }),
+      );
+    } else if (guide === 'hopping' && next > 0 && prevQty <= 0) {
+      window.alert(
+        t(
+          '🏝️ [아일랜드 호핑 안내]\n신청자 4인 이하일 경우 추가 요금이 발생 할 수 있습니다.',
+          '🏝️ [Island Hopping Notice]\nAdditional fees may apply when there are 4 or fewer applicants.',
+        ),
+      );
+    } else if (
+      (guide === 'fundiving' || option.id === 'FUN_DIVING') &&
+      next > 0 &&
+      prevQty <= 0
+    ) {
+      window.alert(
+        t(
+          '🤿 [펀다이빙 안내]\n펀다이빙 신청시 현장 담당 Angelica 에게 언제 펀다이빙을 진행 할지 협의 하고 진행 하세요.',
+          '🤿 [Fun Diving Notice]\nWhen booking fun diving, please coordinate the schedule with on-site staff Angelica before proceeding.',
+        ),
+      );
+    }
+  };
 
   useEffect(() => {
     const name = String(repName || '')
@@ -137,6 +276,7 @@ export default function RoomsDiversForm({
     const roomSnapshot = roomsData[roomIdx];
     const prevGuest = roomSnapshot?.guests?.[guestIdx];
     let autoAlert = null;
+    touch(guestKey(roomIdx, guestIdx, key));
 
     setRoomsData((prev) =>
       prev.map((room, i) => {
@@ -144,13 +284,9 @@ export default function RoomsDiversForm({
         const guests = [...(room.guests || [])];
         let nextVal = value;
         if (
-          [
-            'islandHopping',
-            'funDiving',
-            'restDays',
-            'penaltyFee',
-            'videoCount',
-          ].includes(key)
+          ['islandHopping', 'funDiving', 'penaltyFee', 'videoCount'].includes(
+            key,
+          )
         ) {
           nextVal = Math.max(0, Number(value) || 0);
         }
@@ -232,6 +368,7 @@ export default function RoomsDiversForm({
   };
 
   const updateTrainingCount = (roomIdx, guestIdx, trainingId, value) => {
+    touch(guestKey(roomIdx, guestIdx, `train:${trainingId}`));
     setRoomsData((prev) =>
       prev.map((room, i) => {
         if (i !== roomIdx) return room;
@@ -283,6 +420,7 @@ export default function RoomsDiversForm({
   };
 
   const changeRoomType = (roomIdx, nextType) => {
+    touch(`room:${roomIdx}:roomType`);
     const max = maxGuestsForRoomType(nextType, roomTypes);
     const current = roomsData[roomIdx]?.guests?.length || 1;
     if (current > max) {
@@ -326,7 +464,12 @@ export default function RoomsDiversForm({
               {t(`객실 ${roomIdx + 1}`, `Room ${roomIdx + 1}`)}
             </h3>
             <div className="pair-row">
-              <Field label={t('객실 타입', 'Room Type')} required>
+              <Field
+                label={t('객실 타입', 'Room Type')}
+                required
+                error={err(`room:${roomIdx}:roomType`)}
+                onActivate={() => touch(`room:${roomIdx}:roomType`)}
+              >
                 <select
                   className="input-field"
                   value={room.roomType || ''}
@@ -349,6 +492,8 @@ export default function RoomsDiversForm({
               <Field
                 label={`${t('다이버 수', 'Diver Count')} (max ${maxGuests})`}
                 required
+                error={err(`room:${roomIdx}:guestCount`)}
+                onActivate={() => touch(`room:${roomIdx}:guestCount`)}
               >
                 <select
                   className="input-field"
@@ -356,11 +501,12 @@ export default function RoomsDiversForm({
                     room.guestCount || room.guests?.length || 1,
                     maxGuests,
                   )}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    touch(`room:${roomIdx}:guestCount`);
                     setGuestCount(roomIdx, e.target.value, undefined, {
                       notifyShare: true,
-                    })
-                  }
+                    });
+                  }}
                 >
                   {guestOptions.map((n) => (
                     <option key={n} value={n}>
@@ -445,7 +591,12 @@ export default function RoomsDiversForm({
                         {' · '}
                         {firstGuest?.level || ''}
                       </div>
-                      <Field label={t('영문 성명', 'Name (Passport)')} required>
+                      <Field
+                        label={t('영문 성명', 'Name (Passport)')}
+                        required
+                        error={guestErr(roomIdx, guestIdx, 'name')}
+                        onActivate={() => touch(guestKey(roomIdx, guestIdx, 'name'))}
+                      >
                         <input
                           className="input-field"
                           value={guest.name || ''}
@@ -490,7 +641,12 @@ export default function RoomsDiversForm({
                         {t('기본 정보', 'Basic Info')}
                       </div>
                       <div className="pair-row">
-                        <Field label={t('영문 성명', 'Name (Passport)')} required>
+                        <Field
+                          label={t('영문 성명', 'Name (Passport)')}
+                          required
+                          error={guestErr(roomIdx, guestIdx, 'name')}
+                          onActivate={() => touch(guestKey(roomIdx, guestIdx, 'name'))}
+                        >
                           <input
                             className="input-field"
                             value={guest.name || ''}
@@ -500,7 +656,12 @@ export default function RoomsDiversForm({
                             placeholder="HONG GILDONG"
                           />
                         </Field>
-                        <Field label={t('국적', 'Nationality')} required>
+                        <Field
+                          label={t('국적', 'Nationality')}
+                          required
+                          error={guestErr(roomIdx, guestIdx, 'nationality')}
+                          onActivate={() => touch(guestKey(roomIdx, guestIdx, 'nationality'))}
+                        >
                           <input
                             className="input-field"
                             value={guest.nationality || ''}
@@ -516,7 +677,12 @@ export default function RoomsDiversForm({
                         </Field>
                       </div>
                       <div className="pair-row">
-                        <Field label={t('레벨', 'Level')} required>
+                        <Field
+                          label={t('레벨', 'Level')}
+                          required
+                          error={guestErr(roomIdx, guestIdx, 'level')}
+                          onActivate={() => touch(guestKey(roomIdx, guestIdx, 'level'))}
+                        >
                           <select
                             className="input-field"
                             value={guest.level || 'LEVEL_1'}
@@ -537,7 +703,12 @@ export default function RoomsDiversForm({
                             ))}
                           </select>
                         </Field>
-                        <Field label={t('종목', 'Discipline')} required>
+                        <Field
+                          label={t('종목', 'Discipline')}
+                          required
+                          error={guestErr(roomIdx, guestIdx, 'discipline')}
+                          onActivate={() => touch(guestKey(roomIdx, guestIdx, 'discipline'))}
+                        >
                           <select
                             className="input-field"
                             value={
@@ -562,7 +733,12 @@ export default function RoomsDiversForm({
                           </select>
                         </Field>
                       </div>
-                      <Field label={t('목표수심 (m)', 'Target Depth (m)')} required>
+                      <Field
+                        label={t('목표수심 (m)', 'Target Depth (m)')}
+                        required
+                        error={guestErr(roomIdx, guestIdx, 'targetDepth')}
+                        onActivate={() => touch(guestKey(roomIdx, guestIdx, 'targetDepth'))}
+                      >
                         <input
                           type="number"
                           min="0"
@@ -589,7 +765,12 @@ export default function RoomsDiversForm({
                         {t('일정 / 숙박', 'Schedule / Stay')}
                       </div>
                       <div className="pair-row">
-                        <Field label={t('시작일', 'Start Date')} required>
+                        <Field
+                          label={t('시작일', 'Start Date')}
+                          required
+                          error={guestErr(roomIdx, guestIdx, 'startDate')}
+                          onActivate={() => touch(guestKey(roomIdx, guestIdx, 'startDate'))}
+                        >
                           <input
                             type="date"
                             className="input-field"
@@ -613,7 +794,12 @@ export default function RoomsDiversForm({
                             }}
                           />
                         </Field>
-                        <Field label={t('종료일', 'End Date')} required>
+                        <Field
+                          label={t('종료일', 'End Date')}
+                          required
+                          error={guestErr(roomIdx, guestIdx, 'endDate')}
+                          onActivate={() => touch(guestKey(roomIdx, guestIdx, 'endDate'))}
+                        >
                           <input
                             type="date"
                             className="input-field"
@@ -631,7 +817,11 @@ export default function RoomsDiversForm({
                         </Field>
                       </div>
                       <div className="pair-row">
-                        <Field label={t('체크인 시간', 'Check-in')}>
+                        <Field
+                          label={t('체크인 시간', 'Check-in')}
+                          error={guestErr(roomIdx, guestIdx, 'checkInTime')}
+                          onActivate={() => touch(guestKey(roomIdx, guestIdx, 'checkInTime'))}
+                        >
                           <HourSelect
                             value={guest.checkInTime}
                             fallback="14:00"
@@ -645,7 +835,11 @@ export default function RoomsDiversForm({
                             }
                           />
                         </Field>
-                        <Field label={t('체크아웃 시간', 'Check-out')}>
+                        <Field
+                          label={t('체크아웃 시간', 'Check-out')}
+                          error={guestErr(roomIdx, guestIdx, 'checkOutTime')}
+                          onActivate={() => touch(guestKey(roomIdx, guestIdx, 'checkOutTime'))}
+                        >
                           <HourSelect
                             value={guest.checkOutTime}
                             fallback="11:00"
@@ -662,11 +856,25 @@ export default function RoomsDiversForm({
                       </div>
                       <div className="pair-row" style={{ marginTop: 4 }}>
                         <label
-                          className={`check-label${guest.dawnCheckIn ? ' red-option-box' : ''}`}
+                          className={`check-label${
+                            guest.dawnCheckIn ? ' red-option-box' : ''
+                          }${
+                            guestErr(roomIdx, guestIdx, 'dawnCheckIn')
+                              ? ' check-label-error'
+                              : ''
+                          }`}
+                          data-field-error={
+                            guestErr(roomIdx, guestIdx, 'dawnCheckIn')
+                              ? '1'
+                              : undefined
+                          }
                         >
                           <input
                             type="checkbox"
                             checked={!!guest.dawnCheckIn}
+                            onClick={() =>
+                              touch(guestKey(roomIdx, guestIdx, 'dawnCheckIn'))
+                            }
                             onChange={(e) => {
                               const on = e.target.checked;
                               updateGuest(
@@ -688,11 +896,25 @@ export default function RoomsDiversForm({
                           {t('얼리체크인 (+1박)', 'Early Check-in (+1n)')}
                         </label>
                         <label
-                          className={`check-label${guest.lateCheckOut ? ' red-option-box' : ''}`}
+                          className={`check-label${
+                            guest.lateCheckOut ? ' red-option-box' : ''
+                          }${
+                            guestErr(roomIdx, guestIdx, 'lateCheckOut')
+                              ? ' check-label-error'
+                              : ''
+                          }`}
+                          data-field-error={
+                            guestErr(roomIdx, guestIdx, 'lateCheckOut')
+                              ? '1'
+                              : undefined
+                          }
                         >
                           <input
                             type="checkbox"
                             checked={!!guest.lateCheckOut}
+                            onClick={() =>
+                              touch(guestKey(roomIdx, guestIdx, 'lateCheckOut'))
+                            }
                             onChange={(e) => {
                               const on = e.target.checked;
                               updateGuest(
@@ -717,7 +939,17 @@ export default function RoomsDiversForm({
                     </div>
                   </div>
 
-                  <div style={{ marginTop: 16 }}>
+                  <div
+                    style={{ marginTop: 16 }}
+                    className={
+                      guestErr(roomIdx, guestIdx, 'training')
+                        ? 'field-block-error'
+                        : undefined
+                    }
+                    data-field-error={
+                      guestErr(roomIdx, guestIdx, 'training') ? '1' : undefined
+                    }
+                  >
                     <div className="label-text">
                       {t(
                         '신청 트레이닝 종류별 횟수 선택',
@@ -725,6 +957,14 @@ export default function RoomsDiversForm({
                       )}
                       <span className="required-star"> *</span>
                     </div>
+                    {guestErr(roomIdx, guestIdx, 'training') ? (
+                      <div className="field-error-hint">
+                        {t(
+                          '트레이닝 또는 펀다이빙을 1회 이상 선택하세요.',
+                          'Select at least one training or fun diving session.',
+                        )}
+                      </div>
+                    ) : null}
                     <div className="grid-2 grid-2-dense">
                       {trainingTypes
                         .filter((tr) => tr.isActive !== false)
@@ -732,6 +972,8 @@ export default function RoomsDiversForm({
                           <Field
                             key={tr.id}
                             label={`${tr.name} (${price(tr.priceKRW, tr.priceUSD)})`}
+                            error={guestErr(roomIdx, guestIdx, `train:${tr.id}`)}
+                            onActivate={() => touch(guestKey(roomIdx, guestIdx, `train:${tr.id}`))}
                           >
                             <input
                               type="number"
@@ -757,6 +999,8 @@ export default function RoomsDiversForm({
                       <Field
                         label={t('세이프티 강사', 'Safety Instructor')}
                         required
+                        error={guestErr(roomIdx, guestIdx, 'safetyInstructor')}
+                        onActivate={() => touch(guestKey(roomIdx, guestIdx, 'safetyInstructor'))}
                       >
                         <input
                           className="input-field"
@@ -777,10 +1021,25 @@ export default function RoomsDiversForm({
                           ))}
                         </datalist>
                       </Field>
-                      <label className="check-label" style={{ marginTop: 28 }}>
+                      <label
+                        className={`check-label${
+                          guestErr(roomIdx, guestIdx, 'agreeSelf60')
+                            ? ' check-label-error'
+                            : ''
+                        }`}
+                        style={{ marginTop: 28 }}
+                        data-field-error={
+                          guestErr(roomIdx, guestIdx, 'agreeSelf60')
+                            ? '1'
+                            : undefined
+                        }
+                      >
                         <input
                           type="checkbox"
                           checked={!!guest.agreeSelf60}
+                          onClick={() =>
+                            touch(guestKey(roomIdx, guestIdx, 'agreeSelf60'))
+                          }
                           onChange={(e) =>
                             updateGuest(
                               roomIdx,
@@ -795,12 +1054,27 @@ export default function RoomsDiversForm({
                     </div>
                   )}
 
+                  {transferOption ? (
                   <div className="pair-row" style={{ marginTop: 12 }}>
                     <div className="diver-split-pane">
-                      <label className="check-label">
+                      <label
+                        className={`check-label${
+                          guestErr(roomIdx, guestIdx, 'airportPickup')
+                            ? ' check-label-error'
+                            : ''
+                        }`}
+                        data-field-error={
+                          guestErr(roomIdx, guestIdx, 'airportPickup')
+                            ? '1'
+                            : undefined
+                        }
+                      >
                         <input
                           type="checkbox"
                           checked={!!guest.airportPickup}
+                          onClick={() =>
+                            touch(guestKey(roomIdx, guestIdx, 'airportPickup'))
+                          }
                           onChange={(e) =>
                             updateGuest(
                               roomIdx,
@@ -812,8 +1086,8 @@ export default function RoomsDiversForm({
                         />
                         {t('공항 픽업', 'Airport Pickup')} (
                         {price(
-                          optionPrices.TRANSFER.krw,
-                          optionPrices.TRANSFER.usd,
+                          transferOption.priceKRW,
+                          transferOption.priceUSD,
                         )}
                         )
                       </label>
@@ -822,6 +1096,8 @@ export default function RoomsDiversForm({
                           <Field
                             label={t('항공편명', 'Flight No.')}
                             required
+                            error={guestErr(roomIdx, guestIdx, 'pickupFlight')}
+                            onActivate={() => touch(guestKey(roomIdx, guestIdx, 'pickupFlight'))}
                           >
                             <input
                               className="input-field"
@@ -840,6 +1116,8 @@ export default function RoomsDiversForm({
                           <Field
                             label={t('도착시간', 'Arrival time')}
                             required
+                            error={guestErr(roomIdx, guestIdx, 'pickupTime')}
+                            onActivate={() => touch(guestKey(roomIdx, guestIdx, 'pickupTime'))}
                           >
                             <HourSelect
                               value={guest.pickupTime}
@@ -859,10 +1137,24 @@ export default function RoomsDiversForm({
                     </div>
 
                     <div className="diver-split-pane">
-                      <label className="check-label">
+                      <label
+                        className={`check-label${
+                          guestErr(roomIdx, guestIdx, 'airportDropoff')
+                            ? ' check-label-error'
+                            : ''
+                        }`}
+                        data-field-error={
+                          guestErr(roomIdx, guestIdx, 'airportDropoff')
+                            ? '1'
+                            : undefined
+                        }
+                      >
                         <input
                           type="checkbox"
                           checked={!!guest.airportDropoff}
+                          onClick={() =>
+                            touch(guestKey(roomIdx, guestIdx, 'airportDropoff'))
+                          }
                           onChange={(e) =>
                             updateGuest(
                               roomIdx,
@@ -874,8 +1166,8 @@ export default function RoomsDiversForm({
                         />
                         {t('공항 드롭오프', 'Airport Dropoff')} (
                         {price(
-                          optionPrices.TRANSFER.krw,
-                          optionPrices.TRANSFER.usd,
+                          transferOption.priceKRW,
+                          transferOption.priceUSD,
                         )}
                         )
                       </label>
@@ -884,6 +1176,8 @@ export default function RoomsDiversForm({
                           <Field
                             label={t('항공편명', 'Flight No.')}
                             required
+                            error={guestErr(roomIdx, guestIdx, 'dropoffFlight')}
+                            onActivate={() => touch(guestKey(roomIdx, guestIdx, 'dropoffFlight'))}
                           >
                             <input
                               className="input-field"
@@ -902,6 +1196,8 @@ export default function RoomsDiversForm({
                           <Field
                             label={t('출발시간', 'Departure time')}
                             required
+                            error={guestErr(roomIdx, guestIdx, 'dropoffTime')}
+                            onActivate={() => touch(guestKey(roomIdx, guestIdx, 'dropoffTime'))}
                           >
                             <HourSelect
                               value={guest.dropoffTime}
@@ -920,106 +1216,35 @@ export default function RoomsDiversForm({
                       )}
                     </div>
                   </div>
+                  ) : null}
 
                   <div className="grid-2" style={{ marginTop: 12 }}>
-                    <Field
-                      label={`${t('영상 촬영 횟수', 'Video sessions')} (${price(
-                        optionPrices.VIDEO_PER_DAY.krw,
-                        optionPrices.VIDEO_PER_DAY.usd,
-                      )}/${t('회', 'x')})`}
-                    >
-                      <input
-                        type="number"
-                        min="0"
-                        className="input-field"
-                        value={
-                          Number(guest.videoCount) > 0
-                            ? guest.videoCount
-                            : guest.needsVideo
-                              ? 1
-                              : 0
-                        }
-                        onChange={(e) => {
-                          const next = Math.max(0, Number(e.target.value) || 0);
-                          updateGuest(roomIdx, guestIdx, 'videoCount', next);
-                          window.alert(
-                            buildVideoGuideAlert({
-                              lang,
-                              count: next,
-                              optionPrices,
-                              t,
-                            }),
-                          );
-                        }}
-                      />
-                    </Field>
-                    <Field
-                      label={`${t('아일랜드 호핑 횟수', 'Island Hopping')} (${price(
-                        optionPrices.HOPPING.krw,
-                        optionPrices.HOPPING.usd,
-                      )}/${t('회', 'x')})`}
-                    >
-                      <input
-                        type="number"
-                        min="0"
-                        className="input-field"
-                        value={guest.islandHopping || 0}
-                        onChange={(e) => {
-                          const next = Math.max(0, Number(e.target.value) || 0);
-                          updateGuest(
-                            roomIdx,
-                            guestIdx,
-                            'islandHopping',
-                            next,
-                          );
-                          if (next > 0) {
-                            window.alert(
-                              t(
-                                '🏝️ [아일랜드 호핑 안내]\n신청자 4인 이하일 경우 추가 요금이 발생 할 수 있습니다.',
-                                '🏝️ [Island Hopping Notice]\nAdditional fees may apply when there are 4 or fewer applicants.',
-                              ),
-                            );
+                    {countOptions.map((opt) => (
+                      <Field
+                        key={opt.id}
+                        label={`${t(opt.nameKO, opt.nameEN)} (${price(
+                          opt.priceKRW,
+                          opt.priceUSD,
+                        )}/${t(opt.unitKO || '회', opt.unitEN || 'x')})`}
+                        error={guestErr(roomIdx, guestIdx, `opt:${opt.id}`)}
+                        onActivate={() => touch(guestKey(roomIdx, guestIdx, `opt:${opt.id}`))}
+                      >
+                        <input
+                          type="number"
+                          min="0"
+                          className="input-field"
+                          value={getGuestOptionQty(guest, opt.id)}
+                          onChange={(e) =>
+                            setOptionCount(
+                              roomIdx,
+                              guestIdx,
+                              opt,
+                              e.target.value,
+                            )
                           }
-                        }}
-                      />
-                    </Field>
-                    <Field
-                      label={`${t('펀다이빙 횟수', 'Fun Diving')} (${price(
-                        optionPrices.FUN_DIVING.krw,
-                        optionPrices.FUN_DIVING.usd,
-                      )}/${t('회', 'x')})`}
-                    >
-                      <input
-                        type="number"
-                        min="0"
-                        className="input-field"
-                        value={guest.funDiving || 0}
-                        onChange={(e) =>
-                          updateGuest(
-                            roomIdx,
-                            guestIdx,
-                            'funDiving',
-                            e.target.value,
-                          )
-                        }
-                      />
-                    </Field>
-                    <Field label={t('휴식일', 'Rest Days')}>
-                      <input
-                        type="number"
-                        min="0"
-                        className="input-field"
-                        value={guest.restDays || 0}
-                        onChange={(e) =>
-                          updateGuest(
-                            roomIdx,
-                            guestIdx,
-                            'restDays',
-                            e.target.value,
-                          )
-                        }
-                      />
-                    </Field>
+                        />
+                      </Field>
+                    ))}
                   </div>
                   </>
                   ) : null}

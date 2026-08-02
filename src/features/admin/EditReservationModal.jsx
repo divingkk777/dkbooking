@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createEmptyRoom } from '../../domain/defaults';
-import { processRoomsData } from '../../domain/pricing';
+import { buildPricingExtras, processRoomsData } from '../../domain/pricing';
 import { updateReservation } from '../../data/reservationsRepo';
 import { addAdminLog } from '../../data/logsRepo';
 import { useToast } from '../../ui/ToastContext';
@@ -27,6 +27,9 @@ export default function EditReservationModal({
   const [roomsData, setRoomsData] = useState(() =>
     structuredClone(reservation?.roomsData || []),
   );
+  const [escortCode, setEscortCode] = useState(
+    reservation?.escortCode || '',
+  );
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -37,6 +40,7 @@ export default function EditReservationModal({
     setGroupPin(reservation.groupPin || '');
     setRoomCount(reservation.roomCount || reservation.roomsData?.length || 1);
     setRoomsData(structuredClone(reservation.roomsData || []));
+    setEscortCode(reservation.escortCode || '');
   }, [reservation]);
 
   useEffect(() => {
@@ -55,9 +59,10 @@ export default function EditReservationModal({
         settings.exchangeRate,
         settings.roomTypesConfig,
         settings.trainingTypesConfig,
-        settings.optionPricesConfig,
+        settings.optionsCatalogConfig || settings.optionPricesConfig,
+        buildPricingExtras(settings, escortCode),
       ),
-    [roomsData, settings],
+    [roomsData, settings, escortCode],
   );
 
   if (!reservation) return null;
@@ -74,7 +79,8 @@ export default function EditReservationModal({
         settings.exchangeRate,
         settings.roomTypesConfig,
         settings.trainingTypesConfig,
-        settings.optionPricesConfig,
+        settings.optionsCatalogConfig || settings.optionPricesConfig,
+        buildPricingExtras(settings, escortCode),
       );
       await updateReservation(reservation.id, {
         bookingInstructor: bookingInstructor.trim(),
@@ -85,6 +91,9 @@ export default function EditReservationModal({
         roomsData: next.processedRooms,
         grandTotalKRW: next.grandTotalKRW,
         grandTotalUSD: next.grandTotalUSD,
+        escortCode: String(escortCode || '')
+          .trim()
+          .toUpperCase(),
       });
       await addAdminLog({
         type: 'EDIT',
@@ -170,6 +179,20 @@ export default function EditReservationModal({
               />
             </div>
             <div>
+              <label className="label-text">{t('인솔자코드', 'Escort Code')}</label>
+              <input
+                className="input-field"
+                value={escortCode}
+                onChange={(e) =>
+                  setEscortCode(
+                    e.target.value.replace(/[^a-zA-Z0-9_-]/g, '').toUpperCase(),
+                  )
+                }
+                placeholder={t('트레이닝 할인 코드', 'Training discount code')}
+                style={{ textTransform: 'uppercase' }}
+              />
+            </div>
+            <div>
               <label className="label-text">{t('객실 수', 'Room Count')}</label>
               <select
                 className="input-field"
@@ -194,6 +217,7 @@ export default function EditReservationModal({
           roomTypes={settings.roomTypesConfig}
           trainingTypes={settings.trainingTypesConfig}
           optionPrices={settings.optionPricesConfig}
+          optionsCatalog={settings.optionsCatalogConfig}
           safetyInstructors={(settings.safetyInstructorsConfig || []).map(
             (s) => s.name || s,
           )}

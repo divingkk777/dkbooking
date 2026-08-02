@@ -9,17 +9,19 @@ import {
   DEFAULT_ACCOUNTS,
   DEFAULT_DRIVERS,
   DEFAULT_EXCHANGE_RATE,
-  DEFAULT_OPTION_PRICES,
+  DEFAULT_OPTIONS_CATALOG,
   DEFAULT_ROOM_TYPES,
   DEFAULT_TRAINING_TYPES,
   DEFAULT_UNITS,
   DEFAULT_VEHICLES,
   resolveOptionPrices,
+  resolveOptionsCatalog,
 } from '../domain/defaults';
 
 const FALLBACK_SETTINGS = {
   exchangeRate: DEFAULT_EXCHANGE_RATE,
-  optionPricesConfig: resolveOptionPrices(DEFAULT_OPTION_PRICES),
+  optionsCatalogConfig: resolveOptionsCatalog(DEFAULT_OPTIONS_CATALOG),
+  optionPricesConfig: resolveOptionPrices(DEFAULT_OPTIONS_CATALOG),
   roomTypesConfig: DEFAULT_ROOM_TYPES,
   trainingTypesConfig: DEFAULT_TRAINING_TYPES,
   unitsConfig: DEFAULT_UNITS,

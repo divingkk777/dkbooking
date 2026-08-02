@@ -1,26 +1,35 @@
 import { useState } from 'react';
 
-export default function AdminMemo({ t, value, onSave }) {
-  const [open, setOpen] = useState(false);
+export default function AdminMemo({
+  t,
+  value,
+  onSave,
+  startOpen = false,
+  hideToggle = false,
+  onCollapse,
+}) {
+  const [open, setOpen] = useState(!!startOpen);
   const [draft, setDraft] = useState(value || '');
 
   return (
     <div>
-      <button
-        type="button"
-        className="memo-chip"
-        onClick={() => {
-          setDraft(value || '');
-          setOpen((v) => !v);
-        }}
-      >
-        {open
-          ? t('메모 접기', 'Collapse memo')
-          : value
-            ? t('메모 보기', 'View memo')
-            : t('메모 추가', 'Add memo')}
-      </button>
-      {open && (
+      {!hideToggle && (
+        <button
+          type="button"
+          className="memo-chip"
+          onClick={() => {
+            setDraft(value || '');
+            setOpen((v) => !v);
+          }}
+        >
+          {open
+            ? t('메모 접기', 'Collapse memo')
+            : value
+              ? t('메모 보기', 'View memo')
+              : t('메모 추가', 'Add memo')}
+        </button>
+      )}
+      {(open || hideToggle) && (
         <div className="memo-panel">
           <textarea
             className="textarea-field"
@@ -32,7 +41,10 @@ export default function AdminMemo({ t, value, onSave }) {
             <button
               type="button"
               className="btn-secondary"
-              onClick={() => setOpen(false)}
+              onClick={() => {
+                setOpen(false);
+                onCollapse?.();
+              }}
             >
               {t('취소', 'Cancel')}
             </button>
@@ -43,6 +55,7 @@ export default function AdminMemo({ t, value, onSave }) {
               onClick={async () => {
                 await onSave(draft);
                 setOpen(false);
+                onCollapse?.();
               }}
             >
               {t('메모 저장', 'Save memo')}

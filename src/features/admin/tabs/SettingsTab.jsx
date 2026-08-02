@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
-  DEFAULT_OPTION_PRICES,
   resolveOptionPrices,
+  resolveOptionsCatalog,
+  resolvePromoCodesConfig,
 } from '../../../domain/defaults';
 import { formatMoney } from '../../../domain/pricing';
 import { useToast } from '../../../ui/ToastContext';
@@ -47,9 +48,21 @@ export default function SettingsTab({
   const isFullAdmin = String(role || '').toUpperCase() === 'ADMIN';
 
   const [exchangeRate, setExchangeRate] = useState(settings.exchangeRate);
-  const [optionPrices, setOptionPrices] = useState(() =>
-    resolveOptionPrices(settings.optionPricesConfig),
+  const [optionsCatalog, setOptionsCatalog] = useState(() =>
+    resolveOptionsCatalog(
+      settings.optionsCatalogConfig || settings.optionPricesConfig,
+    ),
   );
+  const [newOption, setNewOption] = useState({
+    nameKO: '',
+    nameEN: '',
+    priceKRW: '',
+    priceUSD: '',
+    unitKO: '회',
+    unitEN: 'x',
+    uiType: 'count',
+    guideKey: '',
+  });
   const [trainingTypes, setTrainingTypes] = useState(() =>
     structuredClone(settings.trainingTypesConfig || []),
   );
@@ -71,6 +84,19 @@ export default function SettingsTab({
   const [safety, setSafety] = useState(() =>
     structuredClone(settings.safetyInstructorsConfig || []),
   );
+  const [promoCodes, setPromoCodes] = useState(() =>
+    resolvePromoCodesConfig(settings.promoCodesConfig),
+  );
+  const [newPromo, setNewPromo] = useState({
+    code: '',
+    nameKO: '',
+    nameEN: '',
+    discountType: 'percent',
+    discountValue: '',
+    discountUSD: '',
+    trainingScope: 'ALL',
+    scopeIds: [],
+  });
 
   const [adminId1, setAdminId1] = useState(settings.adminId1 || '');
   const [adminPassword1, setAdminPassword1] = useState(
@@ -110,7 +136,11 @@ export default function SettingsTab({
 
   useEffect(() => {
     setExchangeRate(settings.exchangeRate);
-    setOptionPrices(resolveOptionPrices(settings.optionPricesConfig));
+    setOptionsCatalog(
+      resolveOptionsCatalog(
+        settings.optionsCatalogConfig || settings.optionPricesConfig,
+      ),
+    );
     setTrainingTypes(structuredClone(settings.trainingTypesConfig || []));
     setRoomTypes(structuredClone(settings.roomTypesConfig || []));
     setAccounts(structuredClone(settings.accountsConfig || []));
@@ -118,17 +148,129 @@ export default function SettingsTab({
     setVehicles(structuredClone(settings.vehiclesConfig || []));
     setDrivers(structuredClone(settings.driversConfig || []));
     setSafety(structuredClone(settings.safetyInstructorsConfig || []));
+    setPromoCodes(resolvePromoCodesConfig(settings.promoCodesConfig));
     setAdminId1(settings.adminId1 || '');
     setAdminPassword1(settings.adminPassword1 || '');
     setAdminId2(settings.adminId2 || '');
     setAdminPassword2(settings.adminPassword2 || '');
   }, [settings]);
 
-  const updateOptionPrice = (key, patch) => {
-    setOptionPrices((prev) => ({
+  const updateCatalogOption = (idx, patch) => {
+    setOptionsCatalog((prev) =>
+      prev.map((o, i) => (i === idx ? { ...o, ...patch } : o)),
+    );
+  };
+
+  const addCatalogOption = () => {
+    if (!newOption.nameKO.trim()) {
+      toast.error(t('상품명을 입력해 주세요.', 'Product name required.'));
+      return;
+    }
+    const id = `OPT_${Date.now()}`;
+    setOptionsCatalog((prev) => [
       ...prev,
-      [key]: { ...prev[key], ...patch },
-    }));
+      {
+        id,
+        nameKO: newOption.nameKO.trim(),
+        nameEN: newOption.nameEN.trim() || newOption.nameKO.trim(),
+        priceKRW: Number(newOption.priceKRW) || 0,
+        priceUSD: Number(newOption.priceUSD) || 0,
+        unitKO: newOption.unitKO || '회',
+        unitEN: newOption.unitEN || 'x',
+        isActive: true,
+        uiType: newOption.uiType === 'transfer' ? 'transfer' : 'count',
+        guideKey: newOption.guideKey || '',
+      },
+    ]);
+    setNewOption({
+      nameKO: '',
+      nameEN: '',
+      priceKRW: '',
+      priceUSD: '',
+      unitKO: '회',
+      unitEN: 'x',
+      uiType: 'count',
+      guideKey: '',
+    });
+  };
+
+  const saveOptionsCatalog = async () => {
+    const next = resolveOptionsCatalog(optionsCatalog);
+    await save(
+      {
+        optionsCatalogConfig: next,
+        optionPricesConfig: resolveOptionPrices(next),
+      },
+      t('옵션 설정이 저장되었습니다.', 'Options catalog saved.'),
+    );
+  };
+
+  const addPromoCode = () => {
+    const code = String(newPromo.code || '')
+      .trim()
+      .toUpperCase();
+    if (!code) {
+      toast.error(t('인솔자코드를 입력하세요.', 'Enter escort code.'));
+      return;
+    }
+    if (promoCodes.some((p) => p.code === code)) {
+      toast.error(t('이미 존재하는 코드입니다.', 'Code already exists.'));
+      return;
+    }
+    const scope =
+      newPromo.trainingScope === 'ALL'
+        ? 'ALL'
+        : (newPromo.scopeIds || []).filter(Boolean);
+    if (newPromo.trainingScope !== 'ALL' && !scope.length) {
+      toast.error(
+        t(
+          '적용할 트레이닝을 선택하세요.',
+          'Select training types in scope.',
+        ),
+      );
+      return;
+    }
+    setPromoCodes((prev) => [
+      ...prev,
+      {
+        id: `PROMO_${Date.now()}`,
+        code,
+        nameKO: newPromo.nameKO.trim() || code,
+        nameEN: newPromo.nameEN.trim() || newPromo.nameKO.trim() || code,
+        isActive: true,
+        discountType: newPromo.discountType === 'amount' ? 'amount' : 'percent',
+        discountValue: Number(newPromo.discountValue) || 0,
+        discountUSD: Number(newPromo.discountUSD) || 0,
+        trainingScope: scope,
+      },
+    ]);
+    setNewPromo({
+      code: '',
+      nameKO: '',
+      nameEN: '',
+      discountType: 'percent',
+      discountValue: '',
+      discountUSD: '',
+      trainingScope: 'ALL',
+      scopeIds: [],
+    });
+  };
+
+  const savePromoCodes = async () => {
+    const next = resolvePromoCodesConfig(promoCodes);
+    await save(
+      { promoCodesConfig: next },
+      t('인솔자코드 설정이 저장되었습니다.', 'Escort codes saved.'),
+    );
+  };
+
+  const togglePromoScopeId = (id) => {
+    setNewPromo((p) => {
+      const set = new Set(p.scopeIds || []);
+      if (set.has(id)) set.delete(id);
+      else set.add(id);
+      return { ...p, scopeIds: [...set], trainingScope: 'SELECTED' };
+    });
   };
 
   const save = async (partial, okMsg) => {
@@ -404,24 +546,94 @@ export default function SettingsTab({
 
       <ManagerCard
         color="#f59f00"
-        title={`💰 ${t('옵션 고정 금액 설정', 'Fixed Option Prices')}`}
+        title={`💰 ${t('옵션 설정', 'Options Settings')}`}
         hint={t(
-          '한글 모드에서는 원화 우선, 영어 모드에서는 달러 우선으로 표시됩니다. 예약 계산에도 이 값이 사용됩니다.',
-          'KO shows KRW first, EN shows USD first. These values are used in booking totals.',
+          '예약 화면 옵션(횟수)과 픽업/드롭 단가를 관리합니다. 한글=원화 우선, 영어=달러 우선 표기.',
+          'Manage booking option products and transfer rates. KO=KRW first, EN=USD first.',
         )}
+        addBar={
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              flexWrap: 'wrap',
+              marginBottom: 16,
+              background: '#fff9db',
+              padding: 14,
+              borderRadius: 12,
+              border: '1px solid #ffe066',
+              alignItems: 'center',
+            }}
+          >
+            <input
+              className="input-field"
+              placeholder={t('상품명 (한글)', 'Name KO')}
+              value={newOption.nameKO}
+              onChange={(e) =>
+                setNewOption((p) => ({ ...p, nameKO: e.target.value }))
+              }
+              style={{ width: 140 }}
+            />
+            <input
+              className="input-field"
+              placeholder={t('상품명 (영문)', 'Name EN')}
+              value={newOption.nameEN}
+              onChange={(e) =>
+                setNewOption((p) => ({ ...p, nameEN: e.target.value }))
+              }
+              style={{ width: 140 }}
+            />
+            <input
+              type="number"
+              className="input-field"
+              placeholder="₩"
+              value={newOption.priceKRW}
+              onChange={(e) =>
+                setNewOption((p) => ({ ...p, priceKRW: e.target.value }))
+              }
+              style={{ width: 100 }}
+            />
+            <input
+              type="number"
+              className="input-field"
+              placeholder="$"
+              value={newOption.priceUSD}
+              onChange={(e) =>
+                setNewOption((p) => ({ ...p, priceUSD: e.target.value }))
+              }
+              style={{ width: 80 }}
+            />
+            <select
+              className="input-field"
+              value={newOption.uiType}
+              onChange={(e) =>
+                setNewOption((p) => ({ ...p, uiType: e.target.value }))
+              }
+              style={{ width: 140 }}
+            >
+              <option value="count">{t('횟수 옵션', 'Count option')}</option>
+              <option value="transfer">
+                {t('픽업/드롭 단가', 'Transfer rate')}
+              </option>
+            </select>
+            <button
+              type="button"
+              className="btn-primary"
+              style={{ width: 'auto', background: '#f59f00' }}
+              onClick={addCatalogOption}
+            >
+              + {t('옵션 추가', 'Add Option')}
+            </button>
+          </div>
+        }
         footer={
           <button
             type="button"
             className="btn-primary"
             style={{ marginTop: 14, backgroundColor: '#f59f00' }}
-            onClick={() =>
-              save(
-                { optionPricesConfig: resolveOptionPrices(optionPrices) },
-                t('옵션 금액이 저장되었습니다.', 'Option prices saved.'),
-              )
-            }
+            onClick={saveOptionsCatalog}
           >
-            💾 {t('옵션 금액 저장', 'Save Option Prices')}
+            💾 {t('옵션 설정 저장', 'Save Options')}
           </button>
         }
       >
@@ -429,49 +641,402 @@ export default function SettingsTab({
           <table className="data-table">
             <thead>
               <tr style={{ backgroundColor: '#fff3bf', color: '#e67700' }}>
-                <th>{t('옵션', 'Option')}</th>
-                <th>{t('단위', 'Unit')}</th>
-                <th>{t('금액 (₩)', 'Price (KRW)')}</th>
-                <th>{t('금액 ($)', 'Price (USD)')}</th>
+                <th>{t('상품명', 'Product')}</th>
+                <th>{t('금액 (₩ / $)', 'Price')}</th>
+                <th>{t('유형', 'Type')}</th>
+                <th style={{ textAlign: 'center' }}>{t('활성', 'Active')}</th>
+                <th style={{ textAlign: 'center' }}>{t('삭제', 'Delete')}</th>
               </tr>
             </thead>
             <tbody>
-              {Object.keys(DEFAULT_OPTION_PRICES).map((key) => {
-                const row = optionPrices[key] || DEFAULT_OPTION_PRICES[key];
-                return (
-                  <tr key={key}>
-                    <td>
-                      <b>{t(row.nameKO, row.nameEN)}</b>
-                      <div style={{ fontSize: 11, color: '#8b95a1' }}>{key}</div>
-                    </td>
-                    <td>{t(row.unitKO, row.unitEN)}</td>
-                    <td>
+              {optionsCatalog.map((row, idx) => (
+                <tr key={row.id || idx}>
+                  <td>
+                    <input
+                      className="input-field"
+                      value={row.nameKO || ''}
+                      onChange={(e) =>
+                        updateCatalogOption(idx, { nameKO: e.target.value })
+                      }
+                      style={{ marginBottom: 6, fontWeight: 700 }}
+                    />
+                    <input
+                      className="input-field"
+                      value={row.nameEN || ''}
+                      onChange={(e) =>
+                        updateCatalogOption(idx, { nameEN: e.target.value })
+                      }
+                      placeholder="EN"
+                    />
+                    <div style={{ fontSize: 11, color: '#8b95a1', marginTop: 4 }}>
+                      {row.id}
+                    </div>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span>₩</span>
                       <input
                         type="number"
                         className="input-field"
-                        value={row.krw ?? 0}
+                        value={row.priceKRW ?? 0}
                         onChange={(e) =>
-                          updateOptionPrice(key, {
-                            krw: Number(e.target.value) || 0,
+                          updateCatalogOption(idx, {
+                            priceKRW: Number(e.target.value) || 0,
                           })
+                        }
+                        style={{ width: 100 }}
+                      />
+                      <span>/</span>
+                      <span>$</span>
+                      <input
+                        type="number"
+                        className="input-field"
+                        value={row.priceUSD ?? 0}
+                        onChange={(e) =>
+                          updateCatalogOption(idx, {
+                            priceUSD: Number(e.target.value) || 0,
+                          })
+                        }
+                        style={{ width: 80 }}
+                      />
+                    </div>
+                  </td>
+                  <td>
+                    <select
+                      className="input-field"
+                      value={row.uiType || 'count'}
+                      onChange={(e) =>
+                        updateCatalogOption(idx, { uiType: e.target.value })
+                      }
+                    >
+                      <option value="count">{t('횟수', 'Count')}</option>
+                      <option value="transfer">{t('픽업/드롭', 'Transfer')}</option>
+                    </select>
+                    <select
+                      className="input-field"
+                      value={row.guideKey || ''}
+                      onChange={(e) =>
+                        updateCatalogOption(idx, { guideKey: e.target.value })
+                      }
+                      style={{ marginTop: 6 }}
+                    >
+                      <option value="">{t('안내없음', 'No guide')}</option>
+                      <option value="video">{t('영상 안내', 'Video guide')}</option>
+                      <option value="hopping">
+                        {t('호핑 안내', 'Hopping guide')}
+                      </option>
+                    </select>
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <StatusToggle
+                      on={row.isActive !== false}
+                      color="#f59f00"
+                      onLabel={t('활성', 'ON')}
+                      offLabel={t('비활성', 'OFF')}
+                      onClick={() =>
+                        updateCatalogOption(idx, {
+                          isActive: row.isActive === false,
+                        })
+                      }
+                    />
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <button
+                      type="button"
+                      className="status-btn"
+                      style={{ backgroundColor: '#f04452', fontSize: 11 }}
+                      onClick={() => {
+                        if (
+                          !window.confirm(
+                            t(
+                              '정말 이 옵션을 삭제하시겠습니까?',
+                              'Delete this option?',
+                            ),
+                          )
+                        ) {
+                          return;
+                        }
+                        setOptionsCatalog((prev) =>
+                          prev.filter((_, i) => i !== idx),
+                        );
+                      }}
+                    >
+                      {t('삭제', 'Delete')}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </ManagerCard>
+
+      <ManagerCard
+        color="#7048e8"
+        title={`🎟️ ${t('인솔자코드 (프로모션)', 'Escort Codes (Promo)')}`}
+        hint={t(
+          '게스트 3단계 통합 합계에서 「인솔자코드」를 입력하면, 선택한 트레이닝 범위에 요율(%) 또는 금액 할인이 적용됩니다.',
+          'Guests enter 「Escort Code」 on step 3; discount applies to selected training types as % or fixed amount.',
+        )}
+        addBar={
+          <div
+            style={{
+              display: 'grid',
+              gap: 10,
+              marginBottom: 16,
+              backgroundColor: '#f3f0ff',
+              padding: 14,
+              borderRadius: 12,
+              border: '1px solid #d0bfff',
+            }}
+          >
+            <div className="grid-2">
+              <div>
+                <label className="label-text">{t('인솔자코드', 'Escort Code')}</label>
+                <input
+                  className="input-field"
+                  value={newPromo.code}
+                  onChange={(e) =>
+                    setNewPromo((p) => ({
+                      ...p,
+                      code: e.target.value
+                        .replace(/[^a-zA-Z0-9_-]/g, '')
+                        .toUpperCase(),
+                    }))
+                  }
+                  placeholder="DKPROMO"
+                  style={{ textTransform: 'uppercase' }}
+                />
+              </div>
+              <div>
+                <label className="label-text">{t('표시명', 'Display name')}</label>
+                <input
+                  className="input-field"
+                  value={newPromo.nameKO}
+                  onChange={(e) =>
+                    setNewPromo((p) => ({ ...p, nameKO: e.target.value }))
+                  }
+                  placeholder={t('예: 인솔 10% 할인', 'e.g. Escort 10% off')}
+                />
+              </div>
+              <div>
+                <label className="label-text">{t('할인 방식', 'Discount type')}</label>
+                <select
+                  className="input-field"
+                  value={newPromo.discountType}
+                  onChange={(e) =>
+                    setNewPromo((p) => ({
+                      ...p,
+                      discountType: e.target.value,
+                    }))
+                  }
+                >
+                  <option value="percent">
+                    {t('요율 (%)', 'Percent (%)')}
+                  </option>
+                  <option value="amount">
+                    {t('금액 (₩ / $)', 'Amount (₩ / $)')}
+                  </option>
+                </select>
+              </div>
+              <div>
+                <label className="label-text">
+                  {newPromo.discountType === 'amount'
+                    ? t('할인 금액 (₩)', 'Discount (₩)')
+                    : t('할인 요율 (%)', 'Discount (%)')}
+                </label>
+                <input
+                  className="input-field"
+                  type="number"
+                  min={0}
+                  value={newPromo.discountValue}
+                  onChange={(e) =>
+                    setNewPromo((p) => ({
+                      ...p,
+                      discountValue: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+              {newPromo.discountType === 'amount' ? (
+                <div>
+                  <label className="label-text">
+                    {t('할인 금액 ($)', 'Discount ($)')}
+                  </label>
+                  <input
+                    className="input-field"
+                    type="number"
+                    min={0}
+                    value={newPromo.discountUSD}
+                    onChange={(e) =>
+                      setNewPromo((p) => ({
+                        ...p,
+                        discountUSD: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              ) : null}
+            </div>
+            <div>
+              <label className="label-text">
+                {t('트레이닝 적용 범위', 'Training scope')}
+              </label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <label className="check-label" style={{ margin: 0 }}>
+                  <input
+                    type="radio"
+                    checked={newPromo.trainingScope === 'ALL'}
+                    onChange={() =>
+                      setNewPromo((p) => ({
+                        ...p,
+                        trainingScope: 'ALL',
+                        scopeIds: [],
+                      }))
+                    }
+                  />
+                  {t('전체 트레이닝', 'All training')}
+                </label>
+                <label className="check-label" style={{ margin: 0 }}>
+                  <input
+                    type="radio"
+                    checked={newPromo.trainingScope !== 'ALL'}
+                    onChange={() =>
+                      setNewPromo((p) => ({
+                        ...p,
+                        trainingScope: 'SELECTED',
+                      }))
+                    }
+                  />
+                  {t('선택 트레이닝만', 'Selected only')}
+                </label>
+              </div>
+              {newPromo.trainingScope !== 'ALL' ? (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 8,
+                    marginTop: 8,
+                  }}
+                >
+                  {trainingTypes
+                    .filter((tr) => tr.isActive !== false)
+                    .map((tr) => (
+                      <label
+                        key={tr.id}
+                        className="check-label"
+                        style={{ margin: 0 }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={(newPromo.scopeIds || []).includes(tr.id)}
+                          onChange={() => togglePromoScopeId(tr.id)}
+                        />
+                        {tr.name || tr.id}
+                      </label>
+                    ))}
+                </div>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={addPromoCode}
+              style={{ justifySelf: 'start' }}
+            >
+              + {t('인솔자코드 추가', 'Add escort code')}
+            </button>
+          </div>
+        }
+        footer={
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={savePromoCodes}
+            style={{ marginTop: 12 }}
+          >
+            💾 {t('인솔자코드 저장', 'Save escort codes')}
+          </button>
+        }
+      >
+        <div style={{ overflowX: 'auto' }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>{t('코드', 'Code')}</th>
+                <th>{t('명칭', 'Name')}</th>
+                <th>{t('할인', 'Discount')}</th>
+                <th>{t('범위', 'Scope')}</th>
+                <th>{t('상태', 'Status')}</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {promoCodes.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: 'center', color: '#8b95a1' }}>
+                    {t('등록된 인솔자코드 없음', 'No escort codes yet')}
+                  </td>
+                </tr>
+              ) : (
+                promoCodes.map((row, idx) => (
+                  <tr key={row.id || row.code}>
+                    <td style={{ fontWeight: 800 }}>{row.code}</td>
+                    <td>{row.nameKO || row.nameEN}</td>
+                    <td>
+                      {row.discountType === 'amount'
+                        ? `₩${formatMoney(row.discountValue)} / $${formatMoney(row.discountUSD)}`
+                        : `${row.discountValue}%`}
+                    </td>
+                    <td style={{ fontSize: 12 }}>
+                      {row.trainingScope === 'ALL' || !row.trainingScope
+                        ? t('전체', 'All')
+                        : (Array.isArray(row.trainingScope)
+                            ? row.trainingScope
+                            : []
+                          )
+                            .map(
+                              (id) =>
+                                trainingTypes.find((tr) => tr.id === id)?.name ||
+                                id,
+                            )
+                            .join(', ') || '-'}
+                    </td>
+                    <td>
+                      <StatusToggle
+                        on={row.isActive !== false}
+                        color="#7048e8"
+                        onLabel={t('사용', 'On')}
+                        offLabel={t('중지', 'Off')}
+                        onClick={() =>
+                          setPromoCodes((prev) =>
+                            prev.map((p, i) =>
+                              i === idx
+                                ? { ...p, isActive: p.isActive === false }
+                                : p,
+                            ),
+                          )
                         }
                       />
                     </td>
                     <td>
-                      <input
-                        type="number"
-                        className="input-field"
-                        value={row.usd ?? 0}
-                        onChange={(e) =>
-                          updateOptionPrice(key, {
-                            usd: Number(e.target.value) || 0,
-                          })
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        style={{ color: '#f04452' }}
+                        onClick={() =>
+                          setPromoCodes((prev) =>
+                            prev.filter((_, i) => i !== idx),
+                          )
                         }
-                      />
+                      >
+                        {t('삭제', 'Delete')}
+                      </button>
                     </td>
                   </tr>
-                );
-              })}
+                ))
+              )}
             </tbody>
           </table>
         </div>

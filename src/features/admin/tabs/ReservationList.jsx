@@ -73,6 +73,7 @@ export default function ReservationList({
 }) {
   const toast = useToast();
   const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('submittedDesc');
   const [selectedKeys, setSelectedKeys] = useState(() => new Set());
   const [paymentRow, setPaymentRow] = useState(null);
   const [voucherRow, setVoucherRow] = useState(null);
@@ -90,28 +91,59 @@ export default function ReservationList({
 
   const rows = useMemo(() => flattenGuestRows(reservations), [reservations]);
 
-  const filtered = useMemo(
-    () => rows.filter((row) => matchesSearch(row, search)),
-    [rows, search],
-  );
+  const filtered = useMemo(() => {
+    let list = rows.filter((row) => matchesSearch(row, search));
+    if (sortBy === 'paymentPendingOnly') {
+      list = list.filter(
+        (row) => !isPaidStatus(row.paymentStatus, settings.accountsConfig),
+      );
+    }
+    const sorted = [...list];
+    sorted.sort((a, b) => {
+      if (sortBy === 'submittedAsc') {
+        return (
+          new Date(a.submittedAt || 0) - new Date(b.submittedAt || 0) ||
+          String(a.bookingSeq || '').localeCompare(String(b.bookingSeq || ''))
+        );
+      }
+      if (sortBy === 'startDate') {
+        return String(a.startDate || '').localeCompare(String(b.startDate || ''));
+      }
+      return (
+        new Date(b.submittedAt || 0) - new Date(a.submittedAt || 0) ||
+        String(b.bookingSeq || '').localeCompare(String(a.bookingSeq || ''))
+      );
+    });
+    return sorted;
+  }, [rows, search, sortBy, settings.accountsConfig]);
 
   const displayRows = useMemo(() => {
-    const colorByGroup = filtered.reduce((acc, row) => {
+    const colorByGroup = filtered.reduce(
+      (acc, row) => {
+        const groupKey = `${row.resId}_r${row.roomIdx}`;
+        if (acc.map[groupKey] === undefined) {
+          acc.map[groupKey] = STRIPE_COLORS[acc.count % STRIPE_COLORS.length];
+          acc.count += 1;
+        }
+        return acc;
+      },
+      { map: {}, count: 0 },
+    ).map;
+    return filtered.map((row, idx) => {
       const groupKey = `${row.resId}_r${row.roomIdx}`;
-      if (acc.map[groupKey] === undefined) {
-        acc.map[groupKey] = STRIPE_COLORS[acc.count % STRIPE_COLORS.length];
-        acc.count += 1;
-      }
-      return acc;
-    }, { map: {}, count: 0 }).map;
-    return filtered.map((row) => ({
-      ...row,
-      __stripe: colorByGroup[`${row.resId}_r${row.roomIdx}`] || '#ffffff',
-    }));
+      const next = filtered[idx + 1];
+      const nextKey = next ? `${next.resId}_r${next.roomIdx}` : '';
+      return {
+        ...row,
+        __stripe: colorByGroup[groupKey] || '#ffffff',
+        __groupBorder: nextKey === groupKey ? 'none' : '2.5px solid #333d4b',
+      };
+    });
   }, [filtered]);
 
   const allKeys = useMemo(() => displayRows.map(rowKey), [displayRows]);
-  const allSelected = allKeys.length > 0 && allKeys.every((k) => selectedKeys.has(k));
+  const allSelected =
+    allKeys.length > 0 && allKeys.every((k) => selectedKeys.has(k));
 
   const selectedRows = useMemo(
     () => displayRows.filter((row) => selectedKeys.has(rowKey(row))),
@@ -225,7 +257,6 @@ export default function ReservationList({
   };
 
   const handleConfirmNew = (row) => {
-    // Live: free toggle (🆕 신규 ↔ ✅ 확인)
     patchGuest(row, { isNew: !row.isNew });
   };
 
@@ -269,33 +300,23 @@ export default function ReservationList({
   };
 
   return (
-    <div>
-      <div className="tabs-row">
-        <input
-          className="input-field"
-          style={{ maxWidth: 320 }}
-          placeholder={t(
-            '이름/강사/국적 검색',
-            'Search name/instructor/nationality',
-          )}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
-
+    <div style={{ overflowX: 'auto' }}>
       {selectedKeys.size > 0 && (
         <div className="selection-banner">
-          <strong>
-            {t(`${selectedKeys.size}건 선택됨`, `${selectedKeys.size} selected`)}
-          </strong>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <span style={{ fontWeight: 800, fontSize: 15 }}>
+            ✅{' '}
+            {t(
+              `${selectedKeys.size}명의 견적서가 선택되었습니다`,
+              `${selectedKeys.size} items selected`,
+            )}
+          </span>
+          <div style={{ display: 'flex', gap: 10 }}>
             <button
               type="button"
               className="btn-primary"
-              style={{ width: 'auto' }}
               onClick={() => setInvoiceOpen(true)}
             >
-              {t('선택 항목 통합 견적서 열기', 'Open Combined Invoice')}
+              🧾 {t('선택 항목 통합 견적서 열기', 'Open Combined Invoice')}
             </button>
             <button type="button" className="btn-ghost" onClick={clearSelection}>
               {t('선택 해제', 'Clear')}
@@ -303,6 +324,70 @@ export default function ReservationList({
           </div>
         </div>
       )}
+
+      <div
+        className="tabs-row"
+        style={{ justifyContent: 'space-between', marginBottom: 16 }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            flexWrap: 'wrap',
+          }}
+        >
+          <span className="label-text" style={{ margin: 0 }}>
+            🔎 {t('검색:', 'Search:')}
+          </span>
+          <input
+            className="input-field"
+            style={{ maxWidth: 280, padding: '10px 12px' }}
+            placeholder={t(
+              '이름, 예약자, 국적 검색...',
+              'Search name, holder, nationality...',
+            )}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            flexWrap: 'wrap',
+          }}
+        >
+          <span className="label-text" style={{ margin: 0 }}>
+            🗂️ {t('집계 정렬:', 'Sort By:')}
+          </span>
+          <select
+            className="input-field"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            style={{
+              width: 'auto',
+              padding: 10,
+              fontWeight: 700,
+              color: '#1b64da',
+            }}
+          >
+            <option value="submittedDesc">
+              ⏱️ {t('최신 접수순', 'Latest First')}
+            </option>
+            <option value="submittedAsc">
+              ⏳ {t('오래된 접수순 (0001번부터)', 'Oldest First')}
+            </option>
+            <option value="paymentPendingOnly">
+              🔴 {t('결제 대기만 보기', 'Pending Only')}
+            </option>
+            <option value="startDate">
+              📅 {t('체크인 날짜순', 'Check-in Date')}
+            </option>
+          </select>
+        </div>
+      </div>
 
       {displayRows.length === 0 && (
         <p style={{ color: 'var(--muted)' }}>
@@ -312,22 +397,30 @@ export default function ReservationList({
 
       {displayRows.length > 0 && (
         <div className="table-wrap">
-          <table className="data-table">
+          <table className="table-custom">
             <thead>
               <tr>
-                <th style={{ width: 32, textAlign: 'center' }}>
+                <th style={{ width: 60, textAlign: 'center' }}>
                   <input
                     type="checkbox"
                     checked={allSelected}
                     onChange={toggleSelectAll}
+                    style={{
+                      width: 18,
+                      height: 18,
+                      cursor: 'pointer',
+                      accentColor: '#3182f6',
+                    }}
                   />
                 </th>
-                <th>{t('고객정보', 'Guest Info')}</th>
-                <th>{t('일정/숙박', 'Dates / Stay')}</th>
-                <th>{t('다이빙/랜드행', 'Diving / Transport')}</th>
-                <th style={{ textAlign: 'right' }}>{t('금액', 'Amount')}</th>
-                <th style={{ minWidth: 230, textAlign: 'center' }}>
-                  {t('액션', 'Actions')}
+                <th>{t('고객 정보 & 상세 내역', 'Guest Info & Details')}</th>
+                <th>{t('일정/숙박', 'Schedule/Stay')}</th>
+                <th>{t('다이빙/픽드랍', 'Diving/Transport')}</th>
+                <th style={{ textAlign: 'right' }}>
+                  {t('총 정산금액', 'Total Invoice')}
+                </th>
+                <th style={{ textAlign: 'center', minWidth: 280 }}>
+                  {t('상태 및 내역 관리', 'Actions & Status')}
                 </th>
               </tr>
             </thead>
@@ -335,7 +428,10 @@ export default function ReservationList({
               {displayRows.map((row) => {
                 const key = rowKey(row);
                 const selected = selectedKeys.has(key);
-                const paid = isPaidStatus(row.paymentStatus, settings.accountsConfig);
+                const paid = isPaidStatus(
+                  row.paymentStatus,
+                  settings.accountsConfig,
+                );
                 const selfCount = Number(row.trainingCounts?.SELF_60) || 0;
                 const baseTotal = Number(row.baseTotalKRW) || 0;
                 const finalTotal = Number(row.individualTotalKRW) || 0;
@@ -345,176 +441,309 @@ export default function ReservationList({
                   ? Math.round((savedAmount / baseTotal) * 100)
                   : 0;
                 const isNoRoom = row.roomType === 'NONE' || !row.roomType;
+                const borderBottom = row.__groupBorder || '2.5px solid #333d4b';
+                const roomLabel = formatRoomTypeLabel(row.roomType);
 
                 return (
                   <tr
                     key={key}
-                    className={row.__stripe === '#d0e8ff' ? 'guest-row-alt' : ''}
+                    style={{
+                      backgroundColor: row.__stripe || '#ffffff',
+                      transition: '0.2s',
+                    }}
                   >
-                    <td style={{ textAlign: 'center' }}>
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        onChange={() => toggleSelect(key)}
-                      />
-                    </td>
-
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span className="seq-badge">[#{row.bookingSeq}]</span>
-                        {admin && (
+                    <td
+                      style={{
+                        textAlign: 'center',
+                        verticalAlign: 'middle',
+                        borderBottom,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: 6,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() => toggleSelect(key)}
+                          style={{
+                            width: 18,
+                            height: 18,
+                            cursor: 'pointer',
+                            accentColor: '#3182f6',
+                          }}
+                        />
+                        <span className="seq-badge">
+                          [#{row.bookingSeq || '0001'}]
+                        </span>
+                        {admin ? (
                           <button
                             type="button"
                             className="btn-ghost"
-                            style={{ padding: '2px 6px', minHeight: 'auto', fontSize: 11 }}
+                            style={{
+                              padding: '2px 6px',
+                              minHeight: 'auto',
+                              fontSize: 11,
+                            }}
                             title={t('예약 전체 삭제', 'Delete entire booking')}
                             onClick={() => handleDeleteReservation(row)}
                           >
                             🗑
                           </button>
-                        )}
+                        ) : null}
                       </div>
-                      <div className="list-name" style={{ fontSize: 14, marginTop: 2 }}>
+                    </td>
+
+                    <td style={{ borderBottom }}>
+                      <b
+                        className="list-name"
+                        style={{
+                          fontSize: 15,
+                          display: 'block',
+                          marginBottom: 2,
+                        }}
+                      >
                         {String(row.name || '').toUpperCase()}
-                      </div>
+                      </b>
                       <div
                         style={{
+                          fontSize: row.assignedRoomNumbers ? 12 : 11,
+                          fontWeight: row.assignedRoomNumbers ? 800 : 400,
+                          color: row.assignedRoomNumbers ? '#3182f6' : '#8b95a1',
+                          marginTop: 3,
+                        }}
+                      >
+                        🚪 RM:{' '}
+                        {row.assignedRoomNumbers || t('미배정', 'Unassigned')}
+                        {isNoRoom ? '' : ` [${roomLabel}]`}
+                      </div>
+                      {selfCount > 0 ? (
+                        <div
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 900,
+                            color: '#f04452',
+                            marginTop: 2,
+                          }}
+                        >
+                          🚨 Self 60
+                        </div>
+                      ) : null}
+                      <span
+                        style={{
+                          color: '#6b7684',
                           fontSize: 12,
-                          fontWeight: 700,
-                          color: row.assignedRoomNumbers ? '#1d4ed8' : 'var(--muted)',
+                          display: 'block',
                           marginTop: 2,
                         }}
                       >
-                        🏨 RM: {row.assignedRoomNumbers || t('미배정', 'Unassigned')}
-                        {isNoRoom ? '' : ` [${formatRoomTypeLabel(row.roomType)}]`}
-                      </div>
-                      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-                        {row.nationality || '-'} | {row.level || '-'}
-                      </div>
-                      {selfCount > 0 && (
-                        <div style={{ color: '#e03131', fontWeight: 900, fontSize: 12, marginTop: 2 }}>
-                          🔴 Self 60
-                        </div>
-                      )}
-                      <div style={{ fontSize: 11, color: '#e03131', fontWeight: 700, marginTop: 4 }}>
-                        🎯 {t('실제 트레이닝', 'Actual training')}: {actualTrainingCount(row)}
+                        {row.nationality || ''} | {row.level || ''}
+                      </span>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: '#f04452',
+                          fontWeight: 700,
+                          marginTop: 4,
+                        }}
+                      >
+                        🔥 {t('실제 트레이닝:', 'Actual Training:')}{' '}
+                        {actualTrainingCount(row)}
                         {t('회', 'x')}
                       </div>
                     </td>
 
-                    <td>
-                      <div style={{ fontSize: 13, fontWeight: 800 }}>
-                        {row.startDate} ({row.checkInTime || '14:00'}) ~ {row.endDate} (
-                        {row.checkOutTime || '11:00'})
+                    <td style={{ borderBottom }}>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 800,
+                          color: '#191f28',
+                        }}
+                      >
+                        {row.startDate} ({row.checkInTime || '14:00'}) ~{' '}
+                        {row.endDate} ({row.checkOutTime || '11:00'})
                       </div>
                       {(row.dawnCheckIn || row.lateCheckOut) && (
-                        <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: 4,
+                            marginTop: 6,
+                            flexWrap: 'wrap',
+                          }}
+                        >
                           {row.dawnCheckIn && (
                             <span className="red-option-box">
-                              ⏰ {t('얼리체크인', 'Early Check-in')}
+                              ✈️ {t('얼리체크인', 'Early-in')}
                             </span>
                           )}
                           {row.lateCheckOut && (
                             <span className="red-option-box">
-                              ⏰ {t('레이트아웃', 'Late Check-out')}
+                              ✈️ {t('레이트아웃', 'Late-out')}
                             </span>
                           )}
                         </div>
                       )}
-                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, fontWeight: 700 }}>
-                        🛏 {t('숙박', 'Stay')}: {row.billedNights || 0}
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: '#6b7684',
+                          marginTop: 6,
+                          fontWeight: 700,
+                        }}
+                      >
+                        🌙 {t('숙박:', 'Stay:')} {row.billedNights || 0}
                         {t('박', 'n')}{' '}
                         {isNoRoom
-                          ? `(${t('방 없음', 'No Room')})`
-                          : `[${formatRoomTypeLabel(row.roomType)}]`}
+                          ? `(${t('방안씀', 'No Room')})`
+                          : `[${roomLabel}]`}
                       </div>
                     </td>
 
-                    <td>
-                      <div>
-                        <b>
-                          {row.discipline || '-'} ({row.targetDepth || 0}m)
-                        </b>
-                        {row.assignedLine && (
-                          <span className="unit-pill" style={{ marginLeft: 6 }}>
-                            {unitLabel(row.assignedLine, lang)}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2, fontSize: 11 }}>
+                    <td style={{ borderBottom }}>
+                      <b>
+                        {row.discipline || '-'} ({row.targetDepth || 0}m)
+                      </b>
+                      {row.assignedLine ? (
+                        <span
+                          className="badge"
+                          style={{
+                            backgroundColor: '#7950f2',
+                            color: '#fff',
+                            marginLeft: 6,
+                          }}
+                        >
+                          {unitLabel(row.assignedLine, lang)}
+                        </span>
+                      ) : null}
+                      <div
+                        style={{
+                          marginTop: 6,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 2,
+                          fontSize: 11,
+                        }}
+                      >
                         {row.airportPickup && (
                           <span style={{ color: '#3182f6', fontWeight: 700 }}>
-                            🛫 {t('픽업', 'Pickup')}: {row.pickupFlight || 'N/A'} (
+                            🛬 {t('픽업:', 'Pickup:')}{' '}
+                            {row.pickupFlight || 'N/A'} (
                             {row.pickupTime || '--:--'})
                           </span>
                         )}
                         {row.airportDropoff && (
                           <span style={{ color: '#e03131', fontWeight: 700 }}>
-                            🛬 {t('드롭오프', 'Dropoff')}: {row.dropoffFlight || 'N/A'} (
+                            🛫 {t('드랍:', 'Dropoff:')}{' '}
+                            {row.dropoffFlight || 'N/A'} (
                             {row.dropoffTime || '--:--'})
                           </span>
                         )}
                         {(row.assignedVehicle || row.assignedDriver) && (
                           <span className="transport-chip">
-                            🚐 {row.assignedVehicle || t('차량 미배정', 'No Vehicle')} | 👤{' '}
-                            {row.assignedDriver || t('기사 미배정', 'No Driver')}
+                            🚐{' '}
+                            {row.assignedVehicle ||
+                              t('차량미배정', 'No Vehicle')}{' '}
+                            | 👤{' '}
+                            {row.assignedDriver || t('기사미배정', 'No Driver')}
                           </span>
                         )}
                       </div>
                     </td>
 
-                    <td style={{ textAlign: 'right' }}>
-                      {hasDiscount && (
+                    <td style={{ textAlign: 'right', borderBottom }}>
+                      {hasDiscount ? (
                         <div
                           style={{
                             textDecoration: 'line-through',
-                            color: 'var(--muted)',
+                            color: '#8b95a1',
                             fontSize: 11,
                           }}
                         >
                           ₩{formatMoney(baseTotal)}
                         </div>
-                      )}
-                      <div style={{ fontWeight: 800, fontSize: 15 }}>
-                        {formatPricePair(
-                          lang,
-                          finalTotal,
-                          row.individualTotalUSD,
-                        )}
+                      ) : null}
+                      <div
+                        style={{
+                          fontWeight: 800,
+                          color: '#191f28',
+                          fontSize: 15,
+                        }}
+                      >
+                        ₩{formatMoney(finalTotal)}
+                      </div>
+                      <div
+                        style={{
+                          fontWeight: 800,
+                          color: '#1b64da',
+                          fontSize: 15,
+                          marginTop: 2,
+                        }}
+                      >
+                        ${formatMoney(row.individualTotalUSD || 0)}
                       </div>
                       {Number(row.customTotalKRW) > 0 ? (
-                        <div style={{ fontSize: 11, color: '#e64980', fontWeight: 700, margin: '2px 0' }}>
-                          🖊 {t('수동지정 적용', 'Manual override')}
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: '#e64980',
+                            fontWeight: 700,
+                            margin: '2px 0',
+                          }}
+                        >
+                          ✍️ {t('수동 지정 적용', 'Manual override')}
                         </div>
                       ) : hasDiscount ? (
-                        <div style={{ fontSize: 11, color: '#f09433', fontWeight: 700, margin: '2px 0' }}>
-                          🔥 -₩{formatMoney(savedAmount)} ({discountPct}% {t('할인', 'Off')})
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: '#f09433',
+                            fontWeight: 700,
+                            margin: '2px 0',
+                          }}
+                        >
+                          🔥 -₩{formatMoney(savedAmount)} ({discountPct}%{' '}
+                          {t('할인', 'Off')})
                         </div>
                       ) : null}
                     </td>
 
-                    <td>
-                      <div className="action-btn-grid">
-                        {/* Live parity: payment/cancel/unit visible to non-guest roles;
-                            instructor: hide approval mail + transport + confirm;
-                            unit click denied for instructor. */}
-                        {!instructor && (
-                          <button
-                            type="button"
-                            className="status-btn"
-                            style={{ background: paid ? '#04c09e' : '#8b95a1' }}
-                            onClick={() => handlePaymentClick(row)}
-                          >
-                            {paid
-                              ? `✅ ${row.paymentStatus}`
-                              : `💰 ${t('결제하기', 'Payment')}`}
-                          </button>
-                        )}
+                    <td
+                      style={{
+                        textAlign: 'center',
+                        verticalAlign: 'middle',
+                        borderBottom,
+                      }}
+                    >
+                      <div className="action-btn-wrapper">
+                        <button
+                          type="button"
+                          className="status-btn"
+                          style={{
+                            margin: 0,
+                            backgroundColor: paid ? '#04c09e' : '#8b95a1',
+                            cursor: instructor ? 'default' : 'pointer',
+                          }}
+                          onClick={() => {
+                            if (instructor) return;
+                            handlePaymentClick(row);
+                          }}
+                        >
+                          {paid
+                            ? `✅ ${row.paymentStatus}`
+                            : t('💳 결제하기', 'Payment')}
+                        </button>
 
                         <button
                           type="button"
                           className="status-btn"
-                          style={{ background: '#f09433' }}
+                          style={{ margin: 0, backgroundColor: '#f09433' }}
                           onClick={() =>
                             onOpenQuote?.({
                               resId: row.resId,
@@ -530,14 +759,14 @@ export default function ReservationList({
                           <button
                             type="button"
                             className="status-btn"
-                            style={{ background: '#10b981' }}
+                            style={{ margin: 0, backgroundColor: '#10b981' }}
                             title={t(
-                              '예약자에게 최종 확정 메일을 발송합니다.',
-                              'Send the final approval email.',
+                              '손님에게 최종 예약 승인 메일 발송',
+                              'Send approval email',
                             )}
                             onClick={() => handleApprovalEmail(row)}
                           >
-                            📧 {t('승인메일', 'Approval Mail')}
+                            ✉️ {t('승인메일', 'Approval Mail')}
                           </button>
                         )}
 
@@ -545,7 +774,8 @@ export default function ReservationList({
                           type="button"
                           className="status-btn"
                           style={{
-                            background: row.assignedRoomNumbers
+                            margin: 0,
+                            backgroundColor: row.assignedRoomNumbers
                               ? '#3182f6'
                               : '#8b95a1',
                           }}
@@ -558,12 +788,18 @@ export default function ReservationList({
                           type="button"
                           className="status-btn"
                           style={{
-                            background: row.assignedLine ? '#7950f2' : '#8b95a1',
+                            margin: 0,
+                            backgroundColor: row.assignedLine
+                              ? '#7950f2'
+                              : '#8b95a1',
                           }}
                           onClick={() => {
                             if (instructor) {
                               toast.warn(
-                                t('강사님 권한이 없습니다.', 'Denied.'),
+                                t(
+                                  '⚠️ 강사는 권한이 없습니다.',
+                                  '⚠️ Denied.',
+                                ),
                               );
                               return;
                             }
@@ -572,7 +808,7 @@ export default function ReservationList({
                         >
                           🎯 {t('유닛', 'Unit')}
                           {row.assignedLine
-                            ? ` (${unitLabel(row.assignedLine, lang)})`
+                            ? `(${unitLabel(row.assignedLine, lang)})`
                             : ''}
                         </button>
 
@@ -581,7 +817,8 @@ export default function ReservationList({
                             type="button"
                             className="status-btn"
                             style={{
-                              background:
+                              margin: 0,
+                              backgroundColor:
                                 row.assignedVehicle || row.assignedDriver
                                   ? '#20c997'
                                   : '#8b95a1',
@@ -595,7 +832,7 @@ export default function ReservationList({
                         <button
                           type="button"
                           className="status-btn"
-                          style={{ background: '#6c757d' }}
+                          style={{ margin: 0, backgroundColor: '#6c757d' }}
                           onClick={() => onOpenEdit?.(row.reservation)}
                         >
                           ✏️ {t('수정', 'Edit')}
@@ -606,29 +843,31 @@ export default function ReservationList({
                             type="button"
                             className="status-btn"
                             style={{
-                              background: row.isNew ? '#ec4899' : '#e5e8eb',
+                              margin: 0,
+                              backgroundColor: row.isNew
+                                ? '#ec4899'
+                                : '#e5e8eb',
                               color: row.isNew ? '#fff' : '#6b7684',
                             }}
                             onClick={() => handleConfirmNew(row)}
                           >
                             {row.isNew
-                              ? `🆕 ${t('신규', 'New')}`
-                              : `✅ ${t('확인', 'Checked')}`}
+                              ? t('🆕 신규', '🆕 New')
+                              : t('✅ 확인', '✅ Checked')}
                           </button>
                         )}
 
-                        {!instructor && (
-                          <button
-                            type="button"
-                            className="status-btn"
-                            style={{
-                              background: paid ? '#a0a0a0' : '#868e96',
-                            }}
-                            onClick={() => handleCancelGuest(row)}
-                          >
-                            🗑️ {t('취소', 'Cancel')}
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          className="status-btn"
+                          style={{
+                            margin: 0,
+                            backgroundColor: paid ? '#a0a0a0' : '#f04452',
+                          }}
+                          onClick={() => handleCancelGuest(row)}
+                        >
+                          🗑️ {t('취소', 'Delete')}
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -683,6 +922,7 @@ export default function ReservationList({
       {invoiceOpen && (
         <CombinedInvoiceModal
           t={t}
+          lang={lang}
           rows={selectedRows}
           exchangeRate={settings.exchangeRate}
           onClose={() => setInvoiceOpen(false)}

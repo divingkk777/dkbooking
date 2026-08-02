@@ -91,11 +91,17 @@ export function flattenGuestRows(reservations, { today } = {}) {
 
 export function isPaidStatus(paymentStatus, accounts = []) {
   const paidNames = new Set([
-    'IDA',
+    'IDA bank',
+    'IDA Wise',
+    'IDA 현장',
     'CASABLUE',
-    'CEBU',
     'OTHER',
+    // legacy labels still count as paid
+    'IDA',
+    'CEBU',
     '카카오',
+    'IDA BA',
+    'IDA CEBU',
     ...accounts.filter((a) => a.isActive !== false).map((a) => a.name),
   ]);
   if (!paymentStatus || paymentStatus === '대기') return false;

@@ -1,6 +1,9 @@
 import {
   DEFAULT_EXCHANGE_RATE,
+  getGuestOptionQty,
   resolveOptionPrices,
+  resolveOptionsCatalog,
+  resolvePromoCode,
 } from './defaults';
 
 export function formatMoney(value) {
@@ -195,6 +198,7 @@ function trainingCostForGuest(guest, trainingTypes) {
   let costUSD = 0;
   let discountedKRW = 0;
   let discountedUSD = 0;
+  const lines = [];
 
   if (Array.isArray(trainingTypes) && trainingTypes.length > 0) {
     trainingTypes
@@ -215,6 +219,17 @@ function trainingCostForGuest(guest, trainingTypes) {
           0;
         discountedKRW += lineKRW * (1 - pct / 100);
         discountedUSD += lineUSD * (1 - pct / 100);
+        lines.push({
+          kind: 'training',
+          id: t.id,
+          nameKO: t.name || t.id,
+          nameEN: t.name || t.id,
+          qty,
+          unitKRW,
+          unitUSD,
+          amountKRW: lineKRW,
+          amountUSD: lineUSD,
+        });
       });
   } else {
     const map = [
@@ -235,10 +250,28 @@ function trainingCostForGuest(guest, trainingTypes) {
         Number(discounts[id]) || Number(guest.trainingDiscount) || 0;
       discountedKRW += lineKRW * (1 - pct / 100);
       discountedUSD += lineUSD * (1 - pct / 100);
+      lines.push({
+        kind: 'training',
+        id,
+        nameKO: id.replace('_', ' '),
+        nameEN: id.replace('_', ' '),
+        qty,
+        unitKRW: krw,
+        unitUSD: usd,
+        amountKRW: lineKRW,
+        amountUSD: lineUSD,
+      });
     });
   }
 
-  return { divingDays, costKRW, costUSD, discountedKRW, discountedUSD };
+  return {
+    divingDays,
+    costKRW,
+    costUSD,
+    discountedKRW,
+    discountedUSD,
+    lines,
+  };
 }
 
 /**
@@ -246,12 +279,76 @@ function trainingCostForGuest(guest, trainingTypes) {
  * Supports Rv19 per-training-type discounts via guest.trainingDiscounts.
  * Falls back to guest.trainingDiscount for legacy docs.
  */
+function applyEscortTrainingPromo(training, promo, guest) {
+  if (!promo || !training) {
+    return {
+      ...training,
+      escortDiscountKRW: 0,
+      escortDiscountUSD: 0,
+      escortCode: '',
+    };
+  }
+  const scope = promo.trainingScope;
+  const all =
+    !scope || scope === 'ALL' || (Array.isArray(scope) && scope.length === 0);
+  const discounts = guest?.trainingDiscounts || {};
+  const guestPct = Number(guest?.trainingDiscount) || 0;
+  let scopedKRW = 0;
+  let scopedUSD = 0;
+  (training.lines || []).forEach((l) => {
+    if (!all && !(Array.isArray(scope) && scope.includes(l.id))) return;
+    const pct = Number(discounts[l.id]) || guestPct || 0;
+    scopedKRW += (Number(l.amountKRW) || 0) * (1 - pct / 100);
+    scopedUSD += (Number(l.amountUSD) || 0) * (1 - pct / 100);
+  });
+  scopedKRW = Math.round(scopedKRW);
+  scopedUSD = Math.round(scopedUSD);
+  let discountKRW = 0;
+  let discountUSD = 0;
+  if (promo.discountType === 'amount') {
+    discountKRW = Math.min(scopedKRW, Number(promo.discountValue) || 0);
+    discountUSD = Math.min(scopedUSD, Number(promo.discountUSD) || 0);
+    if (discountUSD <= 0 && discountKRW > 0 && scopedKRW > 0) {
+      discountUSD = Math.round((discountKRW / scopedKRW) * scopedUSD);
+    }
+  } else {
+    const pct = Math.min(100, Math.max(0, Number(promo.discountValue) || 0));
+    discountKRW = Math.round(scopedKRW * (pct / 100));
+    discountUSD = Math.round(scopedUSD * (pct / 100));
+  }
+  return {
+    ...training,
+    discountedKRW: Math.max(
+      0,
+      (Number(training.discountedKRW) || Number(training.costKRW) || 0) -
+        discountKRW,
+    ),
+    discountedUSD: Math.max(
+      0,
+      (Number(training.discountedUSD) || Number(training.costUSD) || 0) -
+        discountUSD,
+    ),
+    escortDiscountKRW: discountKRW,
+    escortDiscountUSD: discountUSD,
+    escortCode: promo.code || '',
+  };
+}
+
+/** Settings + optional escort code for processRoomsData 6th arg. */
+export function buildPricingExtras(settings, escortCode) {
+  return {
+    promoCodes: settings?.promoCodesConfig || [],
+    escortCode: escortCode || '',
+  };
+}
+
 export function processRoomsData(
   roomsData,
   exchangeRate = DEFAULT_EXCHANGE_RATE,
   roomTypes = [],
   trainingTypes = [],
   optionPricesConfig,
+  pricingExtras = {},
 ) {
   if (!Array.isArray(roomsData)) {
     return { processedRooms: [], grandTotalKRW: 0, grandTotalUSD: 0 };
@@ -261,6 +358,11 @@ export function processRoomsData(
   let grandTotalUSD = 0;
   const rate = Number(exchangeRate) || DEFAULT_EXCHANGE_RATE;
   const optionPrices = resolveOptionPrices(optionPricesConfig);
+  const optionsCatalog = resolveOptionsCatalog(optionPricesConfig);
+  const promo = resolvePromoCode(
+    pricingExtras.promoCodes,
+    pricingExtras.escortCode,
+  );
 
   const processedRooms = roomsData.map((room) => {
     const roomType = room.roomType || 'NONE';
@@ -293,36 +395,72 @@ export function processRoomsData(
           }
         }
 
-        const training = trainingCostForGuest(guest, trainingTypes);
+        let training = trainingCostForGuest(guest, trainingTypes);
+        training = applyEscortTrainingPromo(training, promo, guest);
         let optionsCost = 0;
         let optionsCostUSD = 0;
-        if (guest.airportPickup) {
-          optionsCost += optionPrices.TRANSFER.krw;
-          optionsCostUSD += optionPrices.TRANSFER.usd;
+        const optionLines = [];
+        const transfer = optionPrices.TRANSFER || {
+          krw: 0,
+          usd: 0,
+          isActive: true,
+          nameKO: '공항 픽업/드롭오프',
+          nameEN: 'Airport Transfer',
+        };
+        if (transfer.isActive !== false) {
+          if (guest.airportPickup) {
+            optionsCost += transfer.krw;
+            optionsCostUSD += transfer.usd;
+            optionLines.push({
+              kind: 'option',
+              id: 'TRANSFER_PICKUP',
+              nameKO: '공항 픽업',
+              nameEN: 'Airport Pickup',
+              qty: 1,
+              unitKRW: transfer.krw,
+              unitUSD: transfer.usd,
+              amountKRW: transfer.krw,
+              amountUSD: transfer.usd,
+            });
+          }
+          if (guest.airportDropoff) {
+            optionsCost += transfer.krw;
+            optionsCostUSD += transfer.usd;
+            optionLines.push({
+              kind: 'option',
+              id: 'TRANSFER_DROPOFF',
+              nameKO: '공항 드롭오프',
+              nameEN: 'Airport Dropoff',
+              qty: 1,
+              unitKRW: transfer.krw,
+              unitUSD: transfer.usd,
+              amountKRW: transfer.krw,
+              amountUSD: transfer.usd,
+            });
+          }
         }
-        if (guest.airportDropoff) {
-          optionsCost += optionPrices.TRANSFER.krw;
-          optionsCostUSD += optionPrices.TRANSFER.usd;
-        }
-        const videoCount = Math.max(
-          0,
-          Number(guest.videoCount) > 0
-            ? Number(guest.videoCount)
-            : guest.needsVideo
-              ? training.divingDays
-              : 0,
-        );
-        if (videoCount > 0) {
-          optionsCost += optionPrices.VIDEO_PER_DAY.krw * videoCount;
-          optionsCostUSD += optionPrices.VIDEO_PER_DAY.usd * videoCount;
-        }
-        if ((guest.islandHopping || 0) > 0) {
-          optionsCost += optionPrices.HOPPING.krw * guest.islandHopping;
-          optionsCostUSD += optionPrices.HOPPING.usd * guest.islandHopping;
-        }
-        if ((guest.funDiving || 0) > 0) {
-          optionsCost += optionPrices.FUN_DIVING.krw * guest.funDiving;
-          optionsCostUSD += optionPrices.FUN_DIVING.usd * guest.funDiving;
+        for (const opt of optionsCatalog) {
+          if (opt.uiType === 'transfer') continue;
+          if (opt.isActive === false) continue;
+          const qty = getGuestOptionQty(guest, opt.id);
+          if (qty <= 0) continue;
+          const unitKRW = Number(opt.priceKRW) || 0;
+          const unitUSD = Number(opt.priceUSD) || 0;
+          const lineKRW = unitKRW * qty;
+          const lineUSD = unitUSD * qty;
+          optionsCost += lineKRW;
+          optionsCostUSD += lineUSD;
+          optionLines.push({
+            kind: 'option',
+            id: opt.id,
+            nameKO: opt.nameKO,
+            nameEN: opt.nameEN,
+            qty,
+            unitKRW,
+            unitUSD,
+            amountKRW: lineKRW,
+            amountUSD: lineUSD,
+          });
         }
 
         const penaltyFee = Number(guest.penaltyFee) || 0;
@@ -339,15 +477,20 @@ export function processRoomsData(
         const hasPerTypeDiscount = Object.values(
           guest.trainingDiscounts || {},
         ).some((v) => Number(v) > 0);
+        const escortApplied = (Number(training.escortDiscountKRW) || 0) > 0;
 
-        const trainingAfterDiscount = hasPerTypeDiscount
+        const trainingAfterDiscount = escortApplied
           ? training.discountedKRW
-          : training.costKRW *
-            (1 - (Number(guest.trainingDiscount) || 0) / 100);
-        const trainingAfterDiscountUSD = hasPerTypeDiscount
+          : hasPerTypeDiscount
+            ? training.discountedKRW
+            : training.costKRW *
+              (1 - (Number(guest.trainingDiscount) || 0) / 100);
+        const trainingAfterDiscountUSD = escortApplied
           ? training.discountedUSD
-          : training.costUSD *
-            (1 - (Number(guest.trainingDiscount) || 0) / 100);
+          : hasPerTypeDiscount
+            ? training.discountedUSD
+            : training.costUSD *
+              (1 - (Number(guest.trainingDiscount) || 0) / 100);
 
         const individualTotalKRW =
           customTotalKRW > 0
@@ -372,6 +515,61 @@ export function processRoomsData(
         grandTotalKRW += individualTotalKRW;
         grandTotalUSD += individualTotalUSD;
 
+        const roomNameKO =
+          roomType === 'NONE'
+            ? '객실 미사용 (다이빙만)'
+            : roomCfg?.nameKO || roomCfg?.name || roomType;
+        const roomNameEN =
+          roomType === 'NONE'
+            ? 'No room (diving only)'
+            : roomCfg?.nameEN || roomCfg?.name || roomType;
+
+        const billingLines = [];
+        if (roomShareCost > 0 || roomShareCostUSD > 0 || billedNights > 0) {
+          const extras = [];
+          if (guest.dawnCheckIn) extras.push({ ko: '얼리체크인', en: 'Early CI' });
+          if (guest.lateCheckOut) extras.push({ ko: '레이트체크아웃', en: 'Late CO' });
+          const extraKO = extras.length
+            ? ` (${extras.map((e) => e.ko).join(', ')})`
+            : '';
+          const extraEN = extras.length
+            ? ` (${extras.map((e) => e.en).join(', ')})`
+            : '';
+          billingLines.push({
+            kind: 'room',
+            id: roomType || 'NONE',
+            nameKO: `${roomNameKO} · ${billedNights}박 / ${guestCount}인${extraKO}`,
+            nameEN: `${roomNameEN} · ${billedNights}n / ${guestCount}pax${extraEN}`,
+            qty: billedNights,
+            amountKRW: Math.round(roomShareCost),
+            amountUSD: Math.round(roomShareCostUSD),
+          });
+        }
+        billingLines.push(...training.lines);
+        if ((Number(training.escortDiscountKRW) || 0) > 0) {
+          billingLines.push({
+            kind: 'promo',
+            id: 'ESCORT',
+            nameKO: `인솔자코드 할인 (${training.escortCode})`,
+            nameEN: `Escort code discount (${training.escortCode})`,
+            qty: 1,
+            amountKRW: -Math.round(training.escortDiscountKRW),
+            amountUSD: -Math.round(training.escortDiscountUSD || 0),
+          });
+        }
+        billingLines.push(...optionLines);
+        if (penaltyFee > 0) {
+          billingLines.push({
+            kind: 'penalty',
+            id: 'PENALTY',
+            nameKO: '패널티',
+            nameEN: 'Penalty',
+            qty: 1,
+            amountKRW: penaltyFee,
+            amountUSD: penaltyUSD,
+          });
+        }
+
         return {
           ...guest,
           billedNights,
@@ -386,15 +584,22 @@ export function processRoomsData(
           trainingCostUSD: training.costUSD,
           optionsCost,
           optionsCostUSD,
+          escortDiscountKRW: training.escortDiscountKRW || 0,
+          escortDiscountUSD: training.escortDiscountUSD || 0,
+          escortCode: training.escortCode || '',
           baseTotalKRW,
           baseTotalUSD,
           individualTotalKRW,
           individualTotalUSD,
+          roomType,
+          roomNameKO,
+          roomNameEN,
+          billingLines,
         };
       })
       .filter(Boolean);
 
-    return { ...room, guests: processedGuests };
+    return { ...room, guests: processedGuests, roomType, guestCount };
   });
 
   return { processedRooms, grandTotalKRW, grandTotalUSD };
