@@ -964,14 +964,23 @@ export default function RoomsDiversForm({
                         min="0"
                         className="input-field"
                         value={guest.islandHopping || 0}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const next = Math.max(0, Number(e.target.value) || 0);
                           updateGuest(
                             roomIdx,
                             guestIdx,
                             'islandHopping',
-                            e.target.value,
-                          )
-                        }
+                            next,
+                          );
+                          if (next > 0) {
+                            window.alert(
+                              t(
+                                '🏝️ [아일랜드 호핑 안내]\n신청자 4인 이하일 경우 추가 요금이 발생 할 수 있습니다.',
+                                '🏝️ [Island Hopping Notice]\nAdditional fees may apply when there are 4 or fewer applicants.',
+                              ),
+                            );
+                          }
+                        }}
                       />
                     </Field>
                     <Field
