@@ -5,7 +5,11 @@ import {
   signInWithRedirect,
   signOut,
 } from 'firebase/auth';
-import { auth, googleProvider } from './firebase';
+import {
+  assertFirebaseAuthConfig,
+  auth,
+  createGoogleProvider,
+} from './firebase';
 
 const SESSION = {
   loggedIn: 'guest_isLoggedIn',
@@ -14,7 +18,6 @@ const SESSION = {
   repName: 'guest_repName',
 };
 
-/** Kept for any legacy GIS references; Firebase Auth popup no longer needs it. */
 export const GOOGLE_CLIENT_ID =
   import.meta.env.VITE_GOOGLE_CLIENT_ID ||
   '564197776292-915k9jsa01ha94bc8djg7v6lrkj081i9.apps.googleusercontent.com';
@@ -29,22 +32,22 @@ export function loadGuestSession() {
 }
 
 export function persistGuestUser(userLike) {
-  const email = userLike.email || '';
+  const email = userLike?.email || '';
   const name = (
-    userLike.displayName ||
-    userLike.name ||
+    userLike?.displayName ||
+    userLike?.name ||
     email.split('@')[0] ||
     ''
   )
     .toString()
     .toUpperCase();
   localStorage.setItem(SESSION.loggedIn, 'true');
-  localStorage.setItem(SESSION.method, userLike.method || 'GOOGLE');
+  localStorage.setItem(SESSION.method, userLike?.method || 'GOOGLE');
   localStorage.setItem(SESSION.email, email);
   localStorage.setItem(SESSION.repName, name);
   return {
     loggedIn: true,
-    method: userLike.method || 'GOOGLE',
+    method: userLike?.method || 'GOOGLE',
     email,
     repName: name,
   };
@@ -57,45 +60,49 @@ export function clearGuestSession() {
   localStorage.removeItem(SESSION.repName);
 }
 
+function toGuestUser(firebaseUser) {
+  return {
+    email: firebaseUser.email || '',
+    displayName: firebaseUser.displayName || '',
+    method: 'GOOGLE',
+    uid: firebaseUser.uid,
+  };
+}
+
 /**
- * Google login via Firebase Auth popup (uses Firebase-managed OAuth client).
- * Avoids GIS origin_mismatch on new Hosting sites like dkbooking.web.app.
- * Hosting domain must be in Firebase Auth → Authorized domains.
+ * Google login via Firebase Auth popup.
+ * Domain must be listed under Firebase Auth → Authorized domains
+ * (include dkbooking.web.app).
  */
 export async function signInWithGoogle() {
-  googleProvider.setCustomParameters({ prompt: 'select_account' });
-  googleProvider.addScope('email');
-  googleProvider.addScope('profile');
+  assertFirebaseAuthConfig();
+  const provider = createGoogleProvider();
 
   try {
-    const result = await signInWithPopup(auth, googleProvider);
-    return {
-      mode: 'popup',
-      user: {
-        email: result.user.email || '',
-        displayName: result.user.displayName || '',
-        method: 'GOOGLE',
-        uid: result.user.uid,
-      },
-    };
+    const result = await signInWithPopup(auth, provider);
+    return { mode: 'popup', user: toGuestUser(result.user) };
   } catch (err) {
     const code = err?.code || '';
     if (
       code === 'auth/popup-blocked' ||
       code === 'auth/cancelled-popup-request'
     ) {
-      await signInWithRedirect(auth, googleProvider);
-      // Navigation away — caller should keep busy until page unloads
+      await signInWithRedirect(auth, provider);
       return new Promise(() => {});
     }
     if (code === 'auth/unauthorized-domain') {
       const host = typeof window !== 'undefined' ? window.location.hostname : '';
       throw new Error(
-        `Unauthorized domain (${host}). Add it in Firebase Auth → Settings → Authorized domains.`,
+        `Unauthorized domain (${host}). Firebase Console → Authentication → Settings → Authorized domains 에 추가하세요.`,
       );
     }
     if (code === 'auth/popup-closed-by-user') {
       throw new Error('Google sign-in cancelled');
+    }
+    if (code === 'auth/argument-error') {
+      throw new Error(
+        'Google 로그인 설정 오류(auth/argument-error). Firebase Auth에 Google 로그인이 켜져 있는지, 사이트가 Authorized domains에 있는지 확인하세요.',
+      );
     }
     throw err;
   }
@@ -103,22 +110,22 @@ export async function signInWithGoogle() {
 
 export async function consumeGoogleRedirect() {
   try {
+    assertFirebaseAuthConfig();
     const result = await getRedirectResult(auth);
     if (!result?.user) return null;
-    return {
-      mode: 'redirect',
-      user: {
-        email: result.user.email || '',
-        displayName: result.user.displayName || '',
-        method: 'GOOGLE',
-        uid: result.user.uid,
-      },
-    };
+    return { mode: 'redirect', user: toGuestUser(result.user) };
   } catch (err) {
+    // No pending redirect → ignore argument-error / null results
+    if (
+      err?.code === 'auth/argument-error' ||
+      !err?.code
+    ) {
+      return null;
+    }
     if (err?.code === 'auth/unauthorized-domain') {
       const host = typeof window !== 'undefined' ? window.location.hostname : '';
       throw new Error(
-        `Unauthorized domain (${host}). Add it in Firebase Auth → Settings → Authorized domains.`,
+        `Unauthorized domain (${host}). Firebase Console → Authentication → Settings → Authorized domains 에 추가하세요.`,
       );
     }
     throw err;
@@ -135,7 +142,6 @@ export function getCurrentAuthUser() {
   return auth.currentUser;
 }
 
-/** Local guest session without Google (emergency / offline booking start). */
 export function continueAsGuest({ email, name }) {
   return persistGuestUser({
     email: (email || '').trim(),

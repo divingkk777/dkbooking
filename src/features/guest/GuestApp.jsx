@@ -108,14 +108,16 @@ export default function GuestApp({ settings }) {
     (async () => {
       try {
         const redirected = await consumeGoogleRedirect();
-        if (redirected) {
-          applyUser(redirected, true);
+        if (redirected?.user) {
+          applyUser(redirected.user, true);
           return;
         }
         const current = getCurrentAuthUser();
         if (current) applyUser(current, false);
       } catch (err) {
         if (!alive) return;
+        // Don't spam toast on cold load when there is no redirect pending
+        if (String(err?.code || '').includes('argument-error')) return;
         toast.error(
           err?.message ||
             t(
@@ -182,6 +184,7 @@ export default function GuestApp({ settings }) {
       }
       setAuthBusy(true);
       const result = await signInWithGoogle();
+      if (!result?.user) return;
       enterBooking(persistGuestUser(result.user));
     } catch (err) {
       console.error(err);
