@@ -10,7 +10,10 @@ import {
   OPTION_PRICES_USD,
 } from '../../domain/defaults';
 import { toLocalISODate } from '../../domain/dateUtils';
-import { formatPriceLabel } from '../../domain/pricing';
+import {
+  buildStayOptionAutoAlert,
+  formatPriceLabel,
+} from '../../domain/pricing';
 import { useToast } from '../../ui/ToastContext';
 
 function Field({ label, required, children }) {
@@ -128,6 +131,10 @@ export default function RoomsDiversForm({
   };
 
   const updateGuest = (roomIdx, guestIdx, key, value) => {
+    const roomSnapshot = roomsData[roomIdx];
+    const prevGuest = roomSnapshot?.guests?.[guestIdx];
+    let autoAlert = null;
+
     setRoomsData((prev) =>
       prev.map((room, i) => {
         if (i !== roomIdx) return room;
@@ -153,19 +160,55 @@ export default function RoomsDiversForm({
                 : '00:00';
           nextVal = normalizeHourTime(value, fallback);
         }
-        guests[guestIdx] = { ...guests[guestIdx], [key]: nextVal };
+        const nextGuest = { ...guests[guestIdx], [key]: nextVal };
 
+        // Live parity: early 00:00–11:00, late 13:00+
         if (key === 'checkInTime') {
           const hour = Number(String(nextVal).split(':')[0] || 14);
-          if (hour < 14) guests[guestIdx].dawnCheckIn = true;
+          const shouldEarly = hour >= 0 && hour <= 11;
+          if (shouldEarly) {
+            if (!prevGuest?.dawnCheckIn) {
+              nextGuest.dawnCheckIn = true;
+              autoAlert = { kind: 'early', time: nextVal, room };
+            } else {
+              nextGuest.dawnCheckIn = true;
+            }
+          } else {
+            nextGuest.dawnCheckIn = false;
+          }
         }
         if (key === 'checkOutTime') {
           const hour = Number(String(nextVal).split(':')[0] || 11);
-          if (hour > 11) guests[guestIdx].lateCheckOut = true;
+          const shouldLate = hour >= 13;
+          if (shouldLate) {
+            if (!prevGuest?.lateCheckOut) {
+              nextGuest.lateCheckOut = true;
+              autoAlert = { kind: 'late', time: nextVal, room };
+            } else {
+              nextGuest.lateCheckOut = true;
+            }
+          } else {
+            nextGuest.lateCheckOut = false;
+          }
         }
+
+        guests[guestIdx] = nextGuest;
         return { ...room, guests };
       }),
     );
+
+    if (autoAlert) {
+      const msg = buildStayOptionAutoAlert({
+        lang,
+        kind: autoAlert.kind,
+        time: autoAlert.time,
+        roomType: autoAlert.room?.roomType,
+        roomTypes,
+        guestCount: autoAlert.room?.guests?.length || 1,
+        t,
+      });
+      window.alert(msg);
+    }
   };
 
   const updateTrainingCount = (roomIdx, guestIdx, trainingId, value) => {
@@ -557,7 +600,9 @@ export default function RoomsDiversForm({
                         </Field>
                       </div>
                       <div className="pair-row" style={{ marginTop: 4 }}>
-                        <label className="check-label">
+                        <label
+                          className={`check-label${guest.dawnCheckIn ? ' red-option-box' : ''}`}
+                        >
                           <input
                             type="checkbox"
                             checked={!!guest.dawnCheckIn}
@@ -570,9 +615,11 @@ export default function RoomsDiversForm({
                               )
                             }
                           />
-                          {t('이른 체크인 (+1박)', 'Early Check-in (+1n)')}
+                          {t('얼리체크인 (+1박)', 'Early Check-in (+1n)')}
                         </label>
-                        <label className="check-label">
+                        <label
+                          className={`check-label${guest.lateCheckOut ? ' red-option-box' : ''}`}
+                        >
                           <input
                             type="checkbox"
                             checked={!!guest.lateCheckOut}

@@ -16,6 +16,83 @@ export function formatPriceLabel(lang, priceKRW, priceUSD) {
   return `₩${formatMoney(priceKRW)}`;
 }
 
+export function roomNightlyRates(roomType, roomTypes = [], guestCount = 1) {
+  if (!roomType || roomType === 'NONE') {
+    return { krw: 0, usd: 0, shareKrw: 0, shareUsd: 0 };
+  }
+  const cfg = (roomTypes || []).find((r) => r.id === roomType);
+  const krw = Number(cfg?.priceKRW) || 0;
+  const usd = Number(cfg?.priceUSD) || 0;
+  const n = Math.max(1, Number(guestCount) || 1);
+  return {
+    krw,
+    usd,
+    shareKrw: Math.round(krw / n),
+    shareUsd: Math.round(usd / n),
+  };
+}
+
+/** Popup copy when early/late stay option auto-applies. */
+export function buildStayOptionAutoAlert({
+  lang,
+  kind, // 'early' | 'late'
+  time,
+  roomType,
+  roomTypes,
+  guestCount,
+  t,
+}) {
+  const isEn = String(lang || '').toUpperCase() === 'EN';
+  const rates = roomNightlyRates(roomType, roomTypes, guestCount);
+  const money = isEn
+    ? `$${formatMoney(rates.usd)}`
+    : `₩${formatMoney(rates.krw)}`;
+  const share = isEn
+    ? `$${formatMoney(rates.shareUsd)}`
+    : `₩${formatMoney(rates.shareKrw)}`;
+
+  if (kind === 'early') {
+    const title = t('⏰ [얼리체크인 자동 선택]', '⏰ [Early Check-in Auto-selected]');
+    const cond = t(
+      '조건: 체크인 시간이 12:00 이전(00:00~11:00)이면 얼리체크인(+1박)이 적용됩니다.',
+      'Condition: Check-in before 12:00 (00:00–11:00) applies Early Check-in (+1 night).',
+    );
+    const selected = t(`선택 시간: ${time}`, `Selected time: ${time}`);
+    const fee =
+      rates.krw > 0 || rates.usd > 0
+        ? t(
+            `추가 금액: ${money} (객실 1박) · 1인 분담 약 ${share}`,
+            `Extra charge: ${money} (1 room night) · ~${share} per person`,
+          )
+        : t(
+            '추가 금액: 객실 미사용(다이빙만)인 경우 숙박 추가금 없음',
+            'Extra charge: none when No Room (diving only) is selected',
+          );
+    return `${title}\n${cond}\n${selected}\n${fee}`;
+  }
+
+  const title = t(
+    '⏰ [레이트 체크아웃 자동 선택]',
+    '⏰ [Late Check-out Auto-selected]',
+  );
+  const cond = t(
+    '조건: 체크아웃 시간이 13:00 이후이면 레이트 체크아웃(+1박)이 적용됩니다.',
+    'Condition: Check-out at 13:00 or later applies Late Check-out (+1 night).',
+  );
+  const selected = t(`선택 시간: ${time}`, `Selected time: ${time}`);
+  const fee =
+    rates.krw > 0 || rates.usd > 0
+      ? t(
+          `추가 금액: ${money} (객실 1박) · 1인 분담 약 ${share}`,
+          `Extra charge: ${money} (1 room night) · ~${share} per person`,
+        )
+      : t(
+          '추가 금액: 객실 미사용(다이빙만)인 경우 숙박 추가금 없음',
+          'Extra charge: none when No Room (diving only) is selected',
+        );
+  return `${title}\n${cond}\n${selected}\n${fee}`;
+}
+
 function nightsBetween(startDate, endDate) {
   if (!startDate || !endDate) return 0;
   const start = new Date(startDate);
