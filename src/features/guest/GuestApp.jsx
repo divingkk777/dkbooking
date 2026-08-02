@@ -41,12 +41,16 @@ export default function GuestApp({ settings }) {
   const [gateName, setGateName] = useState('');
   const [step, setStep] = useState(1);
   const [maxReached, setMaxReached] = useState(1);
-  const [bookingInstructor, setBookingInstructor] = useState(
-    () => localStorage.getItem(STORAGE_KEYS.lastBookingInstructor) || '',
-  );
   const [repName, setRepName] = useState(session.repName || '');
-  const [repEmail, setRepEmail] = useState(session.email || '');
+  const [repEmail, setRepEmail] = useState(
+    () =>
+      session.email ||
+      localStorage.getItem(STORAGE_KEYS.lastBookingInstructor) ||
+      '',
+  );
   const [groupPin, setGroupPin] = useState(DEFAULT_GROUP_PIN);
+  /** Login ID = voucher email (same value). */
+  const bookingInstructor = repEmail.trim();
   const [roomCount, setRoomCount] = useState(1);
   const [roomsData, setRoomsData] = useState([createEmptyRoom(1)]);
   const [agreed, setAgreed] = useState(false);
@@ -212,12 +216,8 @@ export default function GuestApp({ settings }) {
       toast.warn(t('예약자명을 입력하세요.', 'Enter holder name.'));
       return false;
     }
-    if (!repEmail.trim()) {
-      toast.warn(t('이메일을 입력하세요.', 'Enter email.'));
-      return false;
-    }
-    if (!bookingInstructor.trim()) {
-      toast.warn(t('강사명을 입력하세요.', 'Enter instructor name.'));
+    if (!repEmail.trim() || !repEmail.includes('@')) {
+      toast.warn(t('이메일을 입력하세요.', 'Enter a valid email.'));
       return false;
     }
     if (!/^\d{4}$/.test(groupPin)) {
@@ -226,7 +226,7 @@ export default function GuestApp({ settings }) {
     }
     localStorage.setItem(
       STORAGE_KEYS.lastBookingInstructor,
-      bookingInstructor.trim(),
+      bookingInstructor,
     );
     seedDiver1FromRep();
     return true;
@@ -604,30 +604,23 @@ export default function GuestApp({ settings }) {
             </div>
             <div>
               <label className="label-text">
-                {t('바우처 수신 이메일', 'Email')}
+                {t(
+                  '바우처 수신 이메일 (= 로그인 ID)',
+                  'Voucher Email (= Login ID)',
+                )}
                 <span className="required-star"> *</span>
               </label>
               <input
                 className="input-field"
                 type="email"
                 value={repEmail}
-                onChange={(e) => setRepEmail(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="label-text">
-                {t('강사명 (로그인 ID)', 'Instructor (Login ID)')}
-                <span className="required-star"> *</span>
-              </label>
-              <input
-                className="input-field"
-                value={bookingInstructor}
-                onChange={(e) => setBookingInstructor(e.target.value)}
+                onChange={(e) => setRepEmail(e.target.value.trim())}
+                placeholder="name@example.com"
               />
               <small style={{ color: 'var(--muted)' }}>
                 {t(
-                  '이후 예약 내역 조회 및 로그인에 사용됩니다.',
-                  'Used for viewing your reservation later.',
+                  '이 이메일이 바우처 수신 주소이자 예약 조회 로그인 ID입니다.',
+                  'This email is both the voucher address and login ID.',
                 )}
               </small>
             </div>
