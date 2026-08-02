@@ -65,8 +65,8 @@ export const DEFAULT_OPTION_PRICES = {
     nameEN: 'Video',
     krw: OPTION_PRICES_KRW.VIDEO_PER_DAY,
     usd: OPTION_PRICES_USD.VIDEO_PER_DAY,
-    unitKO: '일',
-    unitEN: 'day',
+    unitKO: '회',
+    unitEN: 'x',
   },
   HOPPING: {
     id: 'HOPPING',
@@ -153,6 +153,7 @@ export function createEmptyGuest() {
     safetyInstructor: '',
     agreeSelf60: false,
     needsVideo: false,
+    videoCount: 0,
     airportPickup: false,
     pickupFlight: '',
     pickupTime: '00:00',

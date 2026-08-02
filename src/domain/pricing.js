@@ -115,6 +115,33 @@ export function buildStayOptionAutoAlert({
   return [title, cond, how, selected, fee].filter(Boolean).join('\n');
 }
 
+/** Popup when video session count is selected. */
+export function buildVideoGuideAlert({ lang, count, optionPrices, t }) {
+  const n = Math.max(0, Number(count) || 0);
+  const unitKrw = Number(optionPrices?.VIDEO_PER_DAY?.krw) || 0;
+  const unitUsd = Number(optionPrices?.VIDEO_PER_DAY?.usd) || 0;
+  const total = formatPricePair(lang, unitKrw * n, unitUsd * n);
+  const unit = formatPricePair(lang, unitKrw, unitUsd);
+
+  const title = t('🎥 [영상 촬영 안내]', '🎥 [Video Filming Notice]');
+  const rule = t(
+    '촬영은 1일 1인 1회입니다.',
+    'Filming is limited to 1 session per person per day.',
+  );
+  const note = t(
+    '별도 요청이 없을 경우 촬영자가 선택적으로 촬영하며, 필요 촬영에 대해 현장에서 조율 가능합니다.',
+    'Without a special request, the videographer films selectively. Needed shots can be coordinated on site.',
+  );
+  const fee =
+    n > 0
+      ? t(
+          `선택 횟수: ${n}회\n1회 요금: ${unit}\n합계: ${total}`,
+          `Selected: ${n} session(s)\nPer session: ${unit}\nTotal: ${total}`,
+        )
+      : t('선택 횟수: 0회 (미신청)', 'Selected: 0 (not requested)');
+  return `${title}\n${rule}\n${note}\n${fee}`;
+}
+
 /** Popup when diver count is selected. */
 export function buildRoomShareAlert({ lang, guestCount, roomType, roomTypes, t }) {
   const n = Math.max(1, Number(guestCount) || 1);
@@ -277,10 +304,17 @@ export function processRoomsData(
           optionsCost += optionPrices.TRANSFER.krw;
           optionsCostUSD += optionPrices.TRANSFER.usd;
         }
-        if (guest.needsVideo) {
-          optionsCost += optionPrices.VIDEO_PER_DAY.krw * training.divingDays;
-          optionsCostUSD +=
-            optionPrices.VIDEO_PER_DAY.usd * training.divingDays;
+        const videoCount = Math.max(
+          0,
+          Number(guest.videoCount) > 0
+            ? Number(guest.videoCount)
+            : guest.needsVideo
+              ? training.divingDays
+              : 0,
+        );
+        if (videoCount > 0) {
+          optionsCost += optionPrices.VIDEO_PER_DAY.krw * videoCount;
+          optionsCostUSD += optionPrices.VIDEO_PER_DAY.usd * videoCount;
         }
         if ((guest.islandHopping || 0) > 0) {
           optionsCost += optionPrices.HOPPING.krw * guest.islandHopping;

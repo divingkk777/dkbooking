@@ -12,6 +12,7 @@ import { toLocalISODate } from '../../domain/dateUtils';
 import {
   buildRoomShareAlert,
   buildStayOptionAutoAlert,
+  buildVideoGuideAlert,
   formatPricePair,
 } from '../../domain/pricing';
 import { useToast } from '../../ui/ToastContext';
@@ -142,7 +143,15 @@ export default function RoomsDiversForm({
         if (i !== roomIdx) return room;
         const guests = [...(room.guests || [])];
         let nextVal = value;
-        if (['islandHopping', 'funDiving', 'restDays', 'penaltyFee'].includes(key)) {
+        if (
+          [
+            'islandHopping',
+            'funDiving',
+            'restDays',
+            'penaltyFee',
+            'videoCount',
+          ].includes(key)
+        ) {
           nextVal = Math.max(0, Number(value) || 0);
         }
         if (key === 'name') {
@@ -163,6 +172,15 @@ export default function RoomsDiversForm({
           nextVal = normalizeHourTime(value, fallback);
         }
         const nextGuest = { ...guests[guestIdx], [key]: nextVal };
+        if (key === 'videoCount') {
+          nextGuest.needsVideo = nextVal > 0;
+        }
+        if (key === 'needsVideo') {
+          nextGuest.needsVideo = !!value;
+          nextGuest.videoCount = value
+            ? Math.max(1, Number(guests[guestIdx].videoCount) || 1)
+            : 0;
+        }
 
         // Live parity: early 00:00–11:00, late 13:00+
         if (key === 'checkInTime') {
@@ -904,26 +922,37 @@ export default function RoomsDiversForm({
                   </div>
 
                   <div className="grid-2" style={{ marginTop: 12 }}>
-                    <label className="check-label" style={{ gridColumn: '1 / -1' }}>
-                      <input
-                        type="checkbox"
-                        checked={!!guest.needsVideo}
-                        onChange={(e) =>
-                          updateGuest(
-                            roomIdx,
-                            guestIdx,
-                            'needsVideo',
-                            e.target.checked,
-                          )
-                        }
-                      />
-                      {t('영상 촬영', 'Video')} (
-                      {price(
+                    <Field
+                      label={`${t('영상 촬영 횟수', 'Video sessions')} (${price(
                         optionPrices.VIDEO_PER_DAY.krw,
                         optionPrices.VIDEO_PER_DAY.usd,
-                      )}
-                      /{t('일', 'day')})
-                    </label>
+                      )}/${t('회', 'x')})`}
+                    >
+                      <input
+                        type="number"
+                        min="0"
+                        className="input-field"
+                        value={
+                          Number(guest.videoCount) > 0
+                            ? guest.videoCount
+                            : guest.needsVideo
+                              ? 1
+                              : 0
+                        }
+                        onChange={(e) => {
+                          const next = Math.max(0, Number(e.target.value) || 0);
+                          updateGuest(roomIdx, guestIdx, 'videoCount', next);
+                          window.alert(
+                            buildVideoGuideAlert({
+                              lang,
+                              count: next,
+                              optionPrices,
+                              t,
+                            }),
+                          );
+                        }}
+                      />
+                    </Field>
                     <Field
                       label={`${t('아일랜드 호핑 횟수', 'Island Hopping')} (${price(
                         optionPrices.HOPPING.krw,
