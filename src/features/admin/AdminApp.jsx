@@ -17,10 +17,7 @@ import {
 } from '../../data/logsRepo';
 import BrandLockup from '../../components/BrandLockup';
 import { patchSettings } from '../../data/settingsRepo';
-import {
-  DEFAULT_GROUP_PIN,
-  STORAGE_KEYS,
-} from '../../domain/defaults';
+import { STORAGE_KEYS } from '../../domain/defaults';
 import { toLocalISODate } from '../../domain/dateUtils';
 import { removeGuestFromRooms } from '../../domain/listModel';
 import { buildPricingExtras, processRoomsData } from '../../domain/pricing';
@@ -60,10 +57,21 @@ export default function AdminApp({ settings }) {
     () => localStorage.getItem('admin_lang') || 'KO',
   );
   const t = useMemo(() => createTranslator(lang), [lang]);
-  const [username, setUsername] = useState(
-    () => localStorage.getItem(STORAGE_KEYS.lastAdminUsername) || '',
+  const [rememberLogin, setRememberLogin] = useState(
+    () => localStorage.getItem(STORAGE_KEYS.adminRemember) === '1',
   );
-  const [pin, setPin] = useState(DEFAULT_GROUP_PIN);
+  const [username, setUsername] = useState(() => {
+    if (localStorage.getItem(STORAGE_KEYS.adminRemember) === '1') {
+      return localStorage.getItem(STORAGE_KEYS.lastAdminUsername) || '';
+    }
+    return '';
+  });
+  const [pin, setPin] = useState(() => {
+    if (localStorage.getItem(STORAGE_KEYS.adminRemember) === '1') {
+      return localStorage.getItem(STORAGE_KEYS.adminPin) || '';
+    }
+    return '';
+  });
   const [role, setRole] = useState(
     () => sessionStorage.getItem('dk_admin_role') || '',
   );
@@ -113,11 +121,19 @@ export default function AdminApp({ settings }) {
     const id2 = settings.adminId2;
     const pw2 = settings.adminPassword2;
     const u = username.trim();
-    const remember = () => {
-      if (u) localStorage.setItem(STORAGE_KEYS.lastAdminUsername, u);
+    const persistRemember = () => {
+      if (rememberLogin && u) {
+        localStorage.setItem(STORAGE_KEYS.adminRemember, '1');
+        localStorage.setItem(STORAGE_KEYS.lastAdminUsername, u);
+        localStorage.setItem(STORAGE_KEYS.adminPin, String(pin || ''));
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.adminRemember);
+        localStorage.removeItem(STORAGE_KEYS.lastAdminUsername);
+        localStorage.removeItem(STORAGE_KEYS.adminPin);
+      }
     };
     if (u === id1 && pin === pw1) {
-      remember();
+      persistRemember();
       setRole('ADMIN');
       setActor(u);
       sessionStorage.setItem('dk_admin_role', 'ADMIN');
@@ -126,7 +142,7 @@ export default function AdminApp({ settings }) {
       return;
     }
     if (u === id2 && pin === pw2) {
-      remember();
+      persistRemember();
       setRole('ADMIN_TIER1');
       setActor(u);
       sessionStorage.setItem('dk_admin_role', 'ADMIN_TIER1');
@@ -140,7 +156,7 @@ export default function AdminApp({ settings }) {
         String(r.groupPin || '') === pin,
     );
     if (instructorHit) {
-      remember();
+      persistRemember();
       setRole('INSTRUCTOR');
       setActor(u);
       sessionStorage.setItem('dk_admin_role', 'INSTRUCTOR');
@@ -213,6 +229,36 @@ export default function AdminApp({ settings }) {
                 setPin(e.target.value.replace(/\D/g, '').slice(0, 4))
               }
             />
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                marginTop: 12,
+                fontSize: 13,
+                color: '#4e5968',
+                cursor: 'pointer',
+                userSelect: 'none',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={rememberLogin}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setRememberLogin(on);
+                  if (!on) {
+                    localStorage.removeItem(STORAGE_KEYS.adminRemember);
+                    localStorage.removeItem(STORAGE_KEYS.lastAdminUsername);
+                    localStorage.removeItem(STORAGE_KEYS.adminPin);
+                  }
+                }}
+              />
+              {t(
+                '아이디·비밀번호 기억 (이 브라우저)',
+                'Remember ID & PIN (this browser)',
+              )}
+            </label>
           </div>
           <button
             type="button"

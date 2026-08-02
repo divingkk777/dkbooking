@@ -66,10 +66,19 @@ export default function AdsTab({ t, settings, onPatchSettings }) {
     }
     setUploading(true);
     try {
-      // Upload to Storage (URL only in Firestore) — avoids 1MB settings doc limit.
+      // Prefer Firebase Storage URL; falls back to compressed data URL if Storage hangs.
       const url = await uploadAdImage(file);
       setImageUrl(url);
-      toast.success(t('이미지를 업로드했습니다.', 'Image uploaded.'));
+      if (String(url).startsWith('data:')) {
+        toast.success(
+          t(
+            '이미지를 준비했습니다. (Storage 미사용 · 압축 저장) 「광고 추가」를 눌러 저장하세요.',
+            'Image ready (compressed, no Storage). Click Add Ad to save.',
+          ),
+        );
+      } else {
+        toast.success(t('이미지를 업로드했습니다.', 'Image uploaded.'));
+      }
     } catch (err) {
       if (err?.message === 'FILE_TOO_LARGE') {
         toast.warn(
@@ -78,12 +87,19 @@ export default function AdsTab({ t, settings, onPatchSettings }) {
             'Please upload an image under 50MB.',
           ),
         );
+      } else if (err?.message === 'STORAGE_OR_SIZE') {
+        toast.error(
+          t(
+            '업로드 실패. Firebase Storage를 켜거나 더 작은 이미지를 사용해 주세요.',
+            'Upload failed. Enable Firebase Storage or use a smaller image.',
+          ),
+        );
       } else {
         toast.error(
           err?.message ||
             t(
-              '업로드 실패. Storage 규칙을 배포했는지 확인해 주세요.',
-              'Upload failed. Deploy Storage rules if needed.',
+              '업로드 실패. Storage를 콘솔에서 활성화했는지 확인해 주세요.',
+              'Upload failed. Enable Storage in Firebase console.',
             ),
         );
       }
@@ -100,8 +116,8 @@ export default function AdsTab({ t, settings, onPatchSettings }) {
         </h3>
         <p style={{ color: 'var(--muted)', fontSize: 13 }}>
           {t(
-            '게스트 예약 화면 상단에 롤링 배너로 표시됩니다. 활성 광고만 노출됩니다. 이미지는 Firebase Storage에 업로드되며 최대 50MB까지 가능합니다.',
-            'Shown as a rolling banner on the guest booking screen. Images upload to Firebase Storage (max 50MB).',
+            '게스트 예약 화면 상단에 롤링 배너로 표시됩니다. 활성 광고만 노출됩니다. Storage가 있으면 URL로 저장되고, 없으면 자동 압축해 저장합니다.',
+            'Rolling banner on the guest screen. Uses Storage URL when available, otherwise a compressed local image.',
           )}
         </p>
 
@@ -145,7 +161,10 @@ export default function AdsTab({ t, settings, onPatchSettings }) {
           />
           {uploading ? (
             <div style={{ marginTop: 8, fontSize: 13, color: '#3182f6' }}>
-              {t('업로드 중…', 'Uploading…')}
+              {t(
+                '업로드 중… (최대 약 12초, 실패 시 압축 저장으로 전환)',
+                'Uploading… (≈12s timeout, then compressed fallback)',
+              )}
             </div>
           ) : null}
           {imageUrl ? (
@@ -168,10 +187,12 @@ export default function AdsTab({ t, settings, onPatchSettings }) {
           type="button"
           className="btn-primary"
           style={{ marginTop: 16 }}
-          disabled={saving}
+          disabled={saving || uploading}
           onClick={addAd}
         >
-          {t('광고 추가', 'Add Ad')}
+          {uploading
+            ? t('업로드 중…', 'Uploading…')
+            : t('광고 추가', 'Add Ad')}
         </button>
       </div>
 

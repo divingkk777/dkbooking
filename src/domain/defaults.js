@@ -337,6 +337,9 @@ export function copyGuestDetailsFrom(source, { name = '' } = {}) {
 export const STORAGE_KEYS = {
   lastBookingInstructor: 'dk_last_booking_instructor',
   lastAdminUsername: 'dk_last_admin_username',
+  /** Admin/instructor portal: remember username + PIN (same browser). */
+  adminRemember: 'dk_admin_remember',
+  adminPin: 'dk_admin_pin',
   /** My page: remember login email + PIN (same browser/origin). */
   myRemember: 'dk_my_remember',
   myEmail: 'dk_my_email',

@@ -1,6 +1,5 @@
 import emailjs from '@emailjs/browser';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   BOOKER_GRADES,
   createEmptyRoom,
@@ -14,7 +13,7 @@ import {
 import { addAdminLog } from '../../data/logsRepo';
 import { createReservation } from '../../data/reservationsRepo';
 import { createTranslator } from '../../i18n/t';
-import BrandLockup from '../../components/BrandLockup';
+import SiteBrandFooter from '../../components/SiteBrandFooter';
 import {
   buildProfessionalReservationEmail,
   toEmailJsParams,
@@ -661,15 +660,8 @@ export default function GuestApp({ settings }) {
             </div>
           )}
 
-          <div style={{ marginTop: 16 }}>
-            <Link to="/admin" className="btn-ghost">
-              {t('강사 / 관리자 포털', 'Instructor / Admin Portal')}
-            </Link>
-          </div>
         </div>
-        <footer className="site-brand-footer">
-          <BrandLockup variant="footer" showTagline={false} />
-        </footer>
+        <SiteBrandFooter t={t} />
       </div>
     );
   }
@@ -992,9 +984,7 @@ export default function GuestApp({ settings }) {
         }}
       />
 
-      <footer className="site-brand-footer">
-        <BrandLockup variant="footer" showTagline={false} />
-      </footer>
+      <SiteBrandFooter t={t} onBeforeHome={logout} />
     </div>
   );
 }

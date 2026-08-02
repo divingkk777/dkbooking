@@ -41,6 +41,9 @@ export default function GuestTopBar({
           >
             My
           </Link>
+          <Link to="/admin" className="btn-ghost guest-topbar-admin">
+            {t('관리자', 'Admin')}
+          </Link>
         </div>
         {showLogout ? (
           <button type="button" className="btn-ghost" onClick={onLogout}>

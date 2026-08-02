@@ -5,8 +5,11 @@
   "targets": {
     "diving-reservation-app": {
       "hosting": {
-        "dkbooking": ["dkbooking"]
+        "dkbooking": [
+          "dkbooking"
+        ]
       }
     }
-  }
+  },
+  "etags": {}
 }

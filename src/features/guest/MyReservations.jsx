@@ -15,11 +15,12 @@ import {
 import { DISCIPLINES, HOUR_OPTIONS, STORAGE_KEYS } from '../../domain/defaults';
 import { flattenGuestRows, rowKey } from '../../domain/listModel';
 import { createTranslator } from '../../i18n/t';
-import BrandLockup, {
+import {
   BRAND_ASSETS,
   openWhatsApp,
   whatsappHref,
 } from '../../components/BrandLockup';
+import SiteBrandFooter from '../../components/SiteBrandFooter';
 import RollingBanner from '../../components/RollingBanner';
 import { useToast } from '../../ui/ToastContext';
 import SchedulerTab from '../admin/tabs/SchedulerTab';
@@ -1843,9 +1844,12 @@ export default function MyReservations({ settings }) {
         </div>
       ) : null}
 
-      <footer className="site-brand-footer">
-        <BrandLockup variant="footer" showTagline={false} />
-      </footer>
+      <SiteBrandFooter
+        t={t}
+        onBeforeHome={() => {
+          if (authed) logoutMy();
+        }}
+      />
     </div>
   );
 }
