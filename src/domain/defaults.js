@@ -101,6 +101,44 @@ export function createEmptyGuest() {
   };
 }
 
+/** Copy diver details for “same schedule” — keeps target name (or blank). */
+export function copyGuestDetailsFrom(source, { name = '' } = {}) {
+  const base = createEmptyGuest();
+  if (!source) return { ...base, name };
+  const cloned = structuredClone(source);
+  return {
+    ...base,
+    ...cloned,
+    name: name || '',
+    assignedLine: '',
+    assignedVehicle: '',
+    assignedDriver: '',
+    roomDiscount: 0,
+    trainingDiscount: 0,
+    optionsDiscount: 0,
+    customTotalKRW: 0,
+    adminMemo: '',
+    cancelStatus: '',
+    cancelIsNew: false,
+    isNew: true,
+    trainingCounts: {
+      ...EMPTY_TRAINING_COUNTS,
+      ...(cloned.trainingCounts || {}),
+    },
+    trainingDiscounts: {
+      ...EMPTY_TRAINING_DISCOUNTS,
+      ...(cloned.trainingDiscounts || {}),
+    },
+  };
+}
+
+export const STORAGE_KEYS = {
+  lastBookingInstructor: 'dk_last_booking_instructor',
+  lastAdminUsername: 'dk_last_admin_username',
+};
+
+export const DEFAULT_GROUP_PIN = '1111';
+
 export function createEmptyRoom(id = 1) {
   return {
     id,

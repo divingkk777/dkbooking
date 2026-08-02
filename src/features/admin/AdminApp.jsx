@@ -11,6 +11,10 @@ import {
 } from '../../data/reservationsRepo';
 import { addAdminLog, markLogRead, subscribeLogs } from '../../data/logsRepo';
 import { patchSettings } from '../../data/settingsRepo';
+import {
+  DEFAULT_GROUP_PIN,
+  STORAGE_KEYS,
+} from '../../domain/defaults';
 import { toLocalISODate } from '../../domain/dateUtils';
 import { removeGuestFromRooms } from '../../domain/listModel';
 import { processRoomsData } from '../../domain/pricing';
@@ -50,8 +54,10 @@ export default function AdminApp({ settings }) {
     () => localStorage.getItem('admin_lang') || 'KO',
   );
   const t = useMemo(() => createTranslator(lang), [lang]);
-  const [username, setUsername] = useState('');
-  const [pin, setPin] = useState('');
+  const [username, setUsername] = useState(
+    () => localStorage.getItem(STORAGE_KEYS.lastAdminUsername) || '',
+  );
+  const [pin, setPin] = useState(DEFAULT_GROUP_PIN);
   const [role, setRole] = useState(
     () => sessionStorage.getItem('dk_admin_role') || '',
   );
@@ -94,7 +100,11 @@ export default function AdminApp({ settings }) {
     const id2 = settings.adminId2;
     const pw2 = settings.adminPassword2;
     const u = username.trim();
+    const remember = () => {
+      if (u) localStorage.setItem(STORAGE_KEYS.lastAdminUsername, u);
+    };
     if (u === id1 && pin === pw1) {
+      remember();
       setRole('ADMIN');
       setActor(u);
       sessionStorage.setItem('dk_admin_role', 'ADMIN');
@@ -103,6 +113,7 @@ export default function AdminApp({ settings }) {
       return;
     }
     if (u === id2 && pin === pw2) {
+      remember();
       setRole('ADMIN_TIER1');
       setActor(u);
       sessionStorage.setItem('dk_admin_role', 'ADMIN_TIER1');
@@ -116,6 +127,7 @@ export default function AdminApp({ settings }) {
         String(r.groupPin || '') === pin,
     );
     if (instructorHit) {
+      remember();
       setRole('INSTRUCTOR');
       setActor(u);
       sessionStorage.setItem('dk_admin_role', 'INSTRUCTOR');

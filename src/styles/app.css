@@ -12,15 +12,22 @@ body,
   min-height: 100%;
 }
 
+html {
+  overflow-x: clip;
+}
+
 body {
   margin: 0;
   padding: 0;
+  overflow-x: clip;
   background:
     radial-gradient(1200px 500px at 10% -10%, #d7e6ff 0%, transparent 55%),
     radial-gradient(900px 420px at 100% 0%, #e7f7f2 0%, transparent 50%),
     var(--bg);
   color: var(--ink);
   font-family: var(--font);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 button,
@@ -28,18 +35,21 @@ input,
 select,
 textarea {
   font: inherit;
+  max-width: 100%;
 }
 
 .app-shell,
 .admin-shell {
-  max-width: var(--max);
+  max-width: min(var(--max), 100%);
   margin: 0 auto;
-  padding: 20px 16px calc(var(--action-bar-h) + 24px);
+  padding: 20px 16px calc(var(--action-bar-h) + 24px + env(safe-area-inset-bottom));
   width: 100%;
+  min-width: 0;
+  overflow-x: clip;
 }
 
 .admin-shell {
-  padding-bottom: 28px;
+  padding-bottom: calc(28px + env(safe-area-inset-bottom));
 }
 
 .card {
@@ -49,6 +59,9 @@ textarea {
   margin-bottom: 20px;
   box-shadow: var(--shadow);
   border: 2px solid var(--line-strong);
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
 }
 
 .sub-card {
@@ -57,32 +70,65 @@ textarea {
   padding: 20px;
   margin-bottom: 16px;
   border: 1.5px solid var(--line);
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
+}
+
+.field {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .grid-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
   gap: 16px;
   margin-bottom: 16px;
+  min-width: 0;
 }
 
-.grid-2 {
+/* Mobile-first: single column, then 2-col on wider screens */
+.grid-2,
+.pair-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px 16px;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  min-width: 0;
+  width: 100%;
 }
 
 .pair-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px 16px;
   margin-bottom: 12px;
+}
+
+.grid-2 > *,
+.pair-row > *,
+.grid-row > *,
+.diver-split > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .diver-split {
   display: grid;
   grid-template-columns: 1fr;
   gap: 16px;
+  min-width: 0;
+  width: 100%;
+}
+
+.diver-split-pane {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (min-width: 640px) {
+  .grid-2,
+  .pair-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 16px;
+  }
 }
 
 @media (min-width: 900px) {
@@ -100,9 +146,24 @@ textarea {
   }
 }
 
-@media (max-width: 560px) {
-  .grid-2,
-  .pair-row {
+@media (max-width: 639px) {
+  .card {
+    padding: 18px 14px;
+    border-radius: 16px;
+  }
+
+  .sub-card {
+    padding: 14px 12px;
+  }
+
+  .app-shell,
+  .admin-shell {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  /* Keep dense option/training counts as 2-col only when space allows labels */
+  .grid-2.grid-2-dense {
     grid-template-columns: 1fr 1fr;
     gap: 10px;
   }
@@ -122,16 +183,28 @@ textarea {
 
 .input-field,
 .textarea-field {
+  display: block;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: var(--tap);
   padding: 12px 14px;
   border: 1.5px solid var(--line);
   border-radius: var(--radius-sm);
-  font-size: 14px;
+  font-size: 16px; /* iOS: avoid auto-zoom on focus */
   background: #fff;
   color: var(--ink);
   outline: none;
   transition: 0.2s;
+  box-sizing: border-box;
+}
+
+input[type='date'].input-field,
+input[type='time'].input-field,
+input[type='number'].input-field,
+select.input-field {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .textarea-field {
@@ -292,20 +365,34 @@ textarea {
 }
 
 .sticky-action-bar-inner {
-  max-width: var(--max);
+  max-width: min(var(--max), 100%);
   margin: 0 auto;
   display: flex;
   gap: 12px;
   align-items: center;
+  min-width: 0;
 }
 
 .sticky-action-bar .btn-secondary {
-  flex: 0 0 auto;
-  min-width: 110px;
+  flex: 0 1 auto;
+  min-width: 0;
+  padding-inline: 14px;
 }
 
 .sticky-action-bar .btn-primary {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+@media (max-width: 420px) {
+  .sticky-action-bar-inner {
+    flex-wrap: wrap;
+  }
+
+  .sticky-action-bar .btn-secondary,
+  .sticky-action-bar .btn-primary {
+    flex: 1 1 100%;
+  }
 }
 
 .rolling-banner {
@@ -648,22 +735,63 @@ table.data-table th {
 
 .modal-sheet {
   width: min(920px, 100%);
+  max-width: 100%;
   max-height: 92vh;
   overflow: auto;
   background: #fff;
   border-radius: 20px;
   border: 2px solid var(--line-strong);
   padding: 20px;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+@media (max-width: 560px) {
+  .modal-backdrop {
+    padding: 0;
+  }
+
+  .modal-sheet {
+    width: 100%;
+    max-height: 100vh;
+    max-height: 100dvh;
+    border-radius: 16px 16px 0 0;
+    padding: 16px 12px calc(16px + env(safe-area-inset-bottom));
+  }
 }
 
 .check-label {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   font-size: 13px;
   color: var(--ink-2);
   cursor: pointer;
   min-height: 40px;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+.same-ask-card {
+  border: 2px dashed var(--brand);
+  background: var(--brand-soft);
+}
+
+.same-schedule-banner {
+  margin-bottom: 14px;
+  padding: 14px;
+  border-radius: 14px;
+  background: #e6fcf5;
+  border: 1.5px solid #96f2d7;
+}
+
+.same-schedule-summary {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0ca678;
+  margin-bottom: 12px;
+  word-break: break-word;
 }
 
 .red-option-box {
@@ -700,7 +828,15 @@ table.data-table th {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
-  min-width: 220px;
+  min-width: 0;
+  width: 100%;
+  max-width: 260px;
+}
+
+@media (max-width: 720px) {
+  .action-btn-grid {
+    max-width: none;
+  }
 }
 
 .reservation-row {

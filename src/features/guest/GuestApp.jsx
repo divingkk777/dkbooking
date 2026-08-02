@@ -1,7 +1,12 @@
 import emailjs from '@emailjs/browser';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { createEmptyRoom, HOTEL_INFO } from '../../domain/defaults';
+import {
+  createEmptyRoom,
+  DEFAULT_GROUP_PIN,
+  HOTEL_INFO,
+  STORAGE_KEYS,
+} from '../../domain/defaults';
 import { formatMoney, processRoomsData } from '../../domain/pricing';
 import { addAdminLog } from '../../data/logsRepo';
 import { createReservation } from '../../data/reservationsRepo';
@@ -36,10 +41,12 @@ export default function GuestApp({ settings }) {
   const [gateName, setGateName] = useState('');
   const [step, setStep] = useState(1);
   const [maxReached, setMaxReached] = useState(1);
-  const [bookingInstructor, setBookingInstructor] = useState('');
+  const [bookingInstructor, setBookingInstructor] = useState(
+    () => localStorage.getItem(STORAGE_KEYS.lastBookingInstructor) || '',
+  );
   const [repName, setRepName] = useState(session.repName || '');
   const [repEmail, setRepEmail] = useState(session.email || '');
-  const [groupPin, setGroupPin] = useState('');
+  const [groupPin, setGroupPin] = useState(DEFAULT_GROUP_PIN);
   const [roomCount, setRoomCount] = useState(1);
   const [roomsData, setRoomsData] = useState([createEmptyRoom(1)]);
   const [agreed, setAgreed] = useState(false);
@@ -183,6 +190,23 @@ export default function GuestApp({ settings }) {
     setMaxReached((m) => Math.max(m, n));
   };
 
+  const seedDiver1FromRep = () => {
+    const name = repName.trim().toUpperCase();
+    if (!name) return;
+    setRoomsData((prev) =>
+      prev.map((room, ri) => {
+        if (ri !== 0) return room;
+        const guests = [...(room.guests || [])];
+        if (!guests[0]) return room;
+        guests[0] = {
+          ...guests[0],
+          name: guests[0].name?.trim() ? guests[0].name : name,
+        };
+        return { ...room, guests };
+      }),
+    );
+  };
+
   const validateStep1 = () => {
     if (!repName.trim()) {
       toast.warn(t('예약자명을 입력하세요.', 'Enter holder name.'));
@@ -200,6 +224,11 @@ export default function GuestApp({ settings }) {
       toast.warn(t('4자리 PIN을 입력하세요.', 'Enter 4-digit PIN.'));
       return false;
     }
+    localStorage.setItem(
+      STORAGE_KEYS.lastBookingInstructor,
+      bookingInstructor.trim(),
+    );
+    seedDiver1FromRep();
     return true;
   };
 
@@ -639,6 +668,7 @@ export default function GuestApp({ settings }) {
         <RoomsDiversForm
           t={t}
           lang={lang}
+          repName={repName}
           roomsData={roomsData}
           setRoomsData={setRoomsData}
           roomTypes={settings.roomTypesConfig}

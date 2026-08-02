@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import {
+  copyGuestDetailsFrom,
   createEmptyGuest,
   DISCIPLINES,
   HOUR_OPTIONS,
@@ -8,10 +10,11 @@ import {
 } from '../../domain/defaults';
 import { toLocalISODate } from '../../domain/dateUtils';
 import { formatPriceLabel } from '../../domain/pricing';
+import { useToast } from '../../ui/ToastContext';
 
 function Field({ label, required, children }) {
   return (
-    <div>
+    <div className="field">
       <label className="label-text">
         {label}
         {required ? <span className="required-star"> *</span> : null}
@@ -34,9 +37,14 @@ function HourSelect({ value, fallback, onChange }) {
   );
 }
 
+function guestModeKey(roomIdx, guestIdx) {
+  return `${roomIdx}-${guestIdx}`;
+}
+
 export default function RoomsDiversForm({
   t,
   lang = 'KO',
+  repName = '',
   roomsData,
   setRoomsData,
   roomTypes,
@@ -44,8 +52,73 @@ export default function RoomsDiversForm({
   safetyInstructors = [],
   processed,
 }) {
+  const toast = useToast();
   const today = toLocalISODate();
   const price = (krw, usd) => formatPriceLabel(lang, krw, usd);
+  const [sameMode, setSameMode] = useState({});
+  const [detailsOpen, setDetailsOpen] = useState({});
+
+  useEffect(() => {
+    const name = String(repName || '')
+      .replace(/[^a-zA-Z\s]/g, '')
+      .trim()
+      .toUpperCase();
+    if (!name) return;
+    setRoomsData((prev) => {
+      const g0 = prev[0]?.guests?.[0];
+      if (!g0 || (g0.name || '').trim()) return prev;
+      return prev.map((room, ri) => {
+        if (ri !== 0) return room;
+        const guests = [...(room.guests || [])];
+        guests[0] = { ...guests[0], name };
+        return { ...room, guests };
+      });
+    });
+  }, [repName, setRoomsData]);
+
+  useEffect(() => {
+    setSameMode((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      roomsData.forEach((room, ri) => {
+        const n = room.guests?.length || 0;
+        (room.guests || []).forEach((_, gi) => {
+          const key = guestModeKey(ri, gi);
+          if (gi > 0 && n >= 2 && !next[key]) {
+            next[key] = 'ask';
+            changed = true;
+          }
+        });
+      });
+      return changed ? next : prev;
+    });
+  }, [roomsData]);
+
+  const applySameAsFirst = (roomIdx, guestIdx) => {
+    const first = roomsData[roomIdx]?.guests?.[0];
+    if (!first?.startDate || !first?.endDate) {
+      toast.warn(
+        t(
+          '먼저 다이버 1의 일정을 입력해 주세요.',
+          'Please fill Diver 1 schedule first.',
+        ),
+      );
+      return;
+    }
+    const key = guestModeKey(roomIdx, guestIdx);
+    setRoomsData((prev) =>
+      prev.map((room, i) => {
+        if (i !== roomIdx) return room;
+        const guests = [...(room.guests || [])];
+        guests[guestIdx] = copyGuestDetailsFrom(room.guests[0], {
+          name: guests[guestIdx]?.name || '',
+        });
+        return { ...room, guests };
+      }),
+    );
+    setSameMode((m) => ({ ...m, [key]: 'same' }));
+    setDetailsOpen((m) => ({ ...m, [key]: false }));
+  };
 
   const updateRoom = (roomIdx, patch) => {
     setRoomsData((prev) =>
@@ -171,6 +244,48 @@ export default function RoomsDiversForm({
             {(room.guests || []).map((guest, guestIdx) => {
               const pg = processedRoom?.guests?.[guestIdx];
               const selfCount = Number(guest.trainingCounts?.SELF_60) || 0;
+              const guestCount = room.guests?.length || 1;
+              const offerSame = guestIdx > 0 && guestCount >= 2;
+              const modeKey = guestModeKey(roomIdx, guestIdx);
+              const mode = sameMode[modeKey] || (offerSame ? 'ask' : 'custom');
+              const showDetails = mode !== 'same' || !!detailsOpen[modeKey];
+              const firstGuest = room.guests?.[0];
+
+              if (mode === 'ask') {
+                return (
+                  <div key={guestIdx} className="sub-card same-ask-card">
+                    <h4 style={{ marginTop: 0 }}>
+                      {t(`다이버 ${guestIdx + 1}`, `Diver ${guestIdx + 1}`)}
+                    </h4>
+                    <p style={{ margin: '0 0 14px', fontSize: 14, color: 'var(--ink-2)' }}>
+                      {t(
+                        '다이버 1과 일정이 동일합니까? 동일하면 이름만 입력하면 됩니다.',
+                        'Same schedule as Diver 1? If yes, you only need to enter the name.',
+                      )}
+                    </p>
+                    <div className="action-row left">
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        style={{ width: 'auto', background: 'var(--success)' }}
+                        onClick={() => applySameAsFirst(roomIdx, guestIdx)}
+                      >
+                        {t('다이버 1과 동일', 'Same as Diver 1')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() =>
+                          setSameMode((m) => ({ ...m, [modeKey]: 'custom' }))
+                        }
+                      >
+                        {t('다르게 입력', 'Enter separately')}
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
               return (
                 <div key={guestIdx} className="sub-card">
                   <h4 style={{ marginTop: 0 }}>
@@ -182,6 +297,63 @@ export default function RoomsDiversForm({
                     ) : null}
                   </h4>
 
+                  {mode === 'same' && (
+                    <div className="same-schedule-banner">
+                      <div style={{ fontWeight: 800, marginBottom: 8 }}>
+                        {t(
+                          '다이버 1과 동일 일정 적용됨 — 이름만 확인/입력하세요.',
+                          'Same as Diver 1 applied — enter name only.',
+                        )}
+                      </div>
+                      <div className="same-schedule-summary">
+                        {firstGuest?.startDate || '—'} ~ {firstGuest?.endDate || '—'}
+                        {' · '}
+                        {firstGuest?.discipline || 'CWT'}
+                        {firstGuest?.targetDepth
+                          ? ` ${firstGuest.targetDepth}m`
+                          : ''}
+                        {' · '}
+                        {firstGuest?.level || ''}
+                      </div>
+                      <Field label={t('영문 성명', 'Name (Passport)')} required>
+                        <input
+                          className="input-field"
+                          value={guest.name || ''}
+                          onChange={(e) =>
+                            updateGuest(roomIdx, guestIdx, 'name', e.target.value)
+                          }
+                          placeholder="HONG GILDONG"
+                          autoFocus
+                        />
+                      </Field>
+                      <div className="action-row left" style={{ marginTop: 10 }}>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() =>
+                            setDetailsOpen((m) => ({
+                              ...m,
+                              [modeKey]: !m[modeKey],
+                            }))
+                          }
+                        >
+                          {showDetails
+                            ? t('세부 내역 접기', 'Hide details')
+                            : t('세부 내역 수정', 'Edit details')}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() => applySameAsFirst(roomIdx, guestIdx)}
+                        >
+                          {t('다시 동일 적용', 'Re-apply same')}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {showDetails ? (
+                  <>
                   <div className="diver-split">
                     <div className="diver-split-pane">
                       <div className="label-text" style={{ marginBottom: 10 }}>
@@ -401,7 +573,7 @@ export default function RoomsDiversForm({
                       )}
                       <span className="required-star"> *</span>
                     </div>
-                    <div className="grid-2">
+                    <div className="grid-2 grid-2-dense">
                       {trainingTypes
                         .filter((tr) => tr.isActive !== false)
                         .map((tr) => (
@@ -598,7 +770,7 @@ export default function RoomsDiversForm({
                   </div>
 
                   <div className="grid-2" style={{ marginTop: 12 }}>
-                    <label className="check-label">
+                    <label className="check-label" style={{ gridColumn: '1 / -1' }}>
                       <input
                         type="checkbox"
                         checked={!!guest.needsVideo}
@@ -677,6 +849,8 @@ export default function RoomsDiversForm({
                       />
                     </Field>
                   </div>
+                  </>
+                  ) : null}
                 </div>
               );
             })}
