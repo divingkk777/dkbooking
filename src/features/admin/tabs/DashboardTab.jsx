@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { formatMoney, formatPricePair } from '../../../domain/pricing';
+import { formatPricePair } from '../../../domain/pricing';
 
 export default function DashboardTab({ t, lang = 'KO', reservations }) {
   const stats = useMemo(() => {
@@ -39,13 +39,6 @@ export default function DashboardTab({ t, lang = 'KO', reservations }) {
     {
       label: t('합계', 'Total'),
       value: formatPricePair(lang, stats.totalKRW, stats.totalUSD),
-    },
-    {
-      label: t('합계 (보조)', 'Total (secondary)'),
-      value:
-        String(lang).toUpperCase() === 'EN'
-          ? `₩${formatMoney(stats.totalKRW)}`
-          : `$${formatMoney(stats.totalUSD)}`,
     },
   ];
 
