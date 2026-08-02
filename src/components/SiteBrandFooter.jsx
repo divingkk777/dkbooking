@@ -1,16 +1,9 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import BrandLockup from './BrandLockup';
 import { clearGuestSession } from '../lib/guestAuth';
 
-/**
- * Footer logos → guest initial login (/).
- * Optional Admin entry beside the lockup.
- */
-export default function SiteBrandFooter({
-  t,
-  showAdmin = true,
-  onBeforeHome,
-}) {
+/** Footer logos → guest initial login (/). */
+export default function SiteBrandFooter({ t, onBeforeHome }) {
   const navigate = useNavigate();
 
   const goHomeLogin = (e) => {
@@ -34,11 +27,6 @@ export default function SiteBrandFooter({
       >
         <BrandLockup variant="footer" showTagline={false} />
       </a>
-      {showAdmin ? (
-        <Link to="/admin" className="btn-ghost site-brand-footer-admin">
-          {t ? t('관리자', 'Admin') : '관리자'}
-        </Link>
-      ) : null}
     </footer>
   );
 }

@@ -1,10 +1,11 @@
 import {
-  GoogleAuthProvider,
+  getRedirectResult,
   onAuthStateChanged,
-  signInWithCredential,
+  signInWithPopup,
+  signInWithRedirect,
   signOut,
 } from 'firebase/auth';
-import { auth } from './firebase';
+import { auth, googleProvider } from './firebase';
 
 const SESSION = {
   loggedIn: 'guest_isLoggedIn',
@@ -13,7 +14,7 @@ const SESSION = {
   repName: 'guest_repName',
 };
 
-/** Web client from diving-reservation-app Google OAuth */
+/** Kept for any legacy GIS references; Firebase Auth popup no longer needs it. */
 export const GOOGLE_CLIENT_ID =
   import.meta.env.VITE_GOOGLE_CLIENT_ID ||
   '564197776292-915k9jsa01ha94bc8djg7v6lrkj081i9.apps.googleusercontent.com';
@@ -56,159 +57,77 @@ export function clearGuestSession() {
   localStorage.removeItem(SESSION.repName);
 }
 
-function loadGisScript() {
-  return new Promise((resolve, reject) => {
-    if (window.google?.accounts?.id) {
-      resolve(window.google);
-      return;
-    }
-    const existing = document.querySelector('script[data-gis="1"]');
-    if (existing) {
-      existing.addEventListener('load', () => resolve(window.google));
-      existing.addEventListener('error', reject);
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.dataset.gis = '1';
-    script.onload = () => resolve(window.google);
-    script.onerror = () =>
-      reject(new Error('Failed to load Google Identity Services'));
-    document.head.appendChild(script);
-  });
-}
+/**
+ * Google login via Firebase Auth popup (uses Firebase-managed OAuth client).
+ * Avoids GIS origin_mismatch on new Hosting sites like dkbooking.web.app.
+ * Hosting domain must be in Firebase Auth → Authorized domains.
+ */
+export async function signInWithGoogle() {
+  googleProvider.setCustomParameters({ prompt: 'select_account' });
+  googleProvider.addScope('email');
+  googleProvider.addScope('profile');
 
-function decodeJwtPayload(credential) {
   try {
-    const payload = credential.split('.')[1];
-    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
-    return JSON.parse(json);
-  } catch {
-    return {};
+    const result = await signInWithPopup(auth, googleProvider);
+    return {
+      mode: 'popup',
+      user: {
+        email: result.user.email || '',
+        displayName: result.user.displayName || '',
+        method: 'GOOGLE',
+        uid: result.user.uid,
+      },
+    };
+  } catch (err) {
+    const code = err?.code || '';
+    if (
+      code === 'auth/popup-blocked' ||
+      code === 'auth/cancelled-popup-request'
+    ) {
+      await signInWithRedirect(auth, googleProvider);
+      // Navigation away — caller should keep busy until page unloads
+      return new Promise(() => {});
+    }
+    if (code === 'auth/unauthorized-domain') {
+      const host = typeof window !== 'undefined' ? window.location.hostname : '';
+      throw new Error(
+        `Unauthorized domain (${host}). Add it in Firebase Auth → Settings → Authorized domains.`,
+      );
+    }
+    if (code === 'auth/popup-closed-by-user') {
+      throw new Error('Google sign-in cancelled');
+    }
+    throw err;
   }
 }
 
-/**
- * Google login WITHOUT Firebase /__/auth/handler popup
- * (that blank page is what was blocking localhost login).
- */
-export async function signInWithGoogle() {
-  const google = await loadGisScript();
-
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (fn, value) => {
-      if (settled) return;
-      settled = true;
-      fn(value);
-    };
-
-    google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: async (response) => {
-        try {
-          if (!response?.credential) {
-            finish(reject, new Error('No Google credential'));
-            return;
-          }
-          const profile = decodeJwtPayload(response.credential);
-          const credential = GoogleAuthProvider.credential(response.credential);
-          try {
-            const result = await signInWithCredential(auth, credential);
-            finish(resolve, {
-              mode: 'gis',
-              user: result.user,
-            });
-          } catch {
-            // Firestore/Auth rules may still allow guest session even if
-            // Firebase Auth credential exchange fails.
-            finish(resolve, {
-              mode: 'gis-local',
-              user: {
-                email: profile.email || '',
-                displayName: profile.name || '',
-                method: 'GOOGLE',
-              },
-            });
-          }
-        } catch (err) {
-          finish(reject, err);
-        }
-      },
-      auto_select: false,
-      cancel_on_tap_outside: true,
-      use_fedcm_for_prompt: true,
-    });
-
-    // Prefer One Tap / FedCM prompt; if skipped, fall back to OAuth token popup.
-    google.accounts.id.prompt((notification) => {
-      if (settled) return;
-      const skipped =
-        notification.isNotDisplayed?.() ||
-        notification.isSkippedMoment?.() ||
-        notification.isDismissedMoment?.();
-      if (!skipped) return;
-
-      try {
-        const tokenClient = google.accounts.oauth2.initTokenClient({
-          client_id: GOOGLE_CLIENT_ID,
-          scope: 'openid email profile',
-          callback: async (tokenResponse) => {
-            try {
-              if (tokenResponse.error) {
-                finish(reject, new Error(tokenResponse.error));
-                return;
-              }
-              const res = await fetch(
-                'https://www.googleapis.com/oauth2/v3/userinfo',
-                {
-                  headers: {
-                    Authorization: `Bearer ${tokenResponse.access_token}`,
-                  },
-                },
-              );
-              if (!res.ok) {
-                finish(reject, new Error('Failed to fetch Google profile'));
-                return;
-              }
-              const profile = await res.json();
-              finish(resolve, {
-                mode: 'gis-token',
-                user: {
-                  email: profile.email || '',
-                  displayName: profile.name || '',
-                  method: 'GOOGLE',
-                },
-              });
-            } catch (err) {
-              finish(reject, err);
-            }
-          },
-          error_callback: (err) => {
-            finish(
-              reject,
-              new Error(err?.message || 'Google OAuth cancelled'),
-            );
-          },
-        });
-        tokenClient.requestAccessToken({ prompt: 'select_account' });
-      } catch (err) {
-        finish(reject, err);
-      }
-    });
-  });
-}
-
 export async function consumeGoogleRedirect() {
-  // GIS flow does not use Firebase redirect handler.
-  return null;
+  try {
+    const result = await getRedirectResult(auth);
+    if (!result?.user) return null;
+    return {
+      mode: 'redirect',
+      user: {
+        email: result.user.email || '',
+        displayName: result.user.displayName || '',
+        method: 'GOOGLE',
+        uid: result.user.uid,
+      },
+    };
+  } catch (err) {
+    if (err?.code === 'auth/unauthorized-domain') {
+      const host = typeof window !== 'undefined' ? window.location.hostname : '';
+      throw new Error(
+        `Unauthorized domain (${host}). Add it in Firebase Auth → Settings → Authorized domains.`,
+      );
+    }
+    throw err;
+  }
 }
 
 export function watchGuestAuth(onUser) {
-  return onAuthStateChanged(auth, (user) => {
-    onUser(user || null);
+  return onAuthStateChanged(auth, (u) => {
+    onUser(u || null);
   });
 }
 
