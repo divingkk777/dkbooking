@@ -1,6 +1,6 @@
 import emailjs from '@emailjs/browser';
 import { useEffect, useMemo, useState } from 'react';
-import { formatMoney, formatPricePair } from '../../../domain/pricing';
+import { formatMoney } from '../../../domain/pricing';
 import { addAdminLog } from '../../../data/logsRepo';
 import { useToast } from '../../../ui/ToastContext';
 import {
@@ -19,6 +19,10 @@ import {
   UnitModal,
   VoucherModal,
 } from '../AssignModals';
+import {
+  buildProfessionalReservationEmail,
+  toEmailJsParams,
+} from '../../../lib/emailTemplates';
 
 const STRIPE_COLORS = ['#ffffff', '#d0e8ff'];
 
@@ -46,17 +50,6 @@ function matchesSearch(row, term) {
     .join(' ')
     .toLowerCase();
   return haystack.includes(needle);
-}
-
-function buildInvoiceDetails(row, t, lang = 'KO') {
-  return [
-    `${row.name} (${row.nationality || ''} ${row.level || ''})`.trim(),
-    `${row.startDate || ''} ~ ${row.endDate || ''}`,
-    `${t('객실', 'Room')}: ${formatPricePair(lang, row.roomShareCost, row.roomShareCostUSD)}`,
-    `${t('트레이닝', 'Training')}: ${formatPricePair(lang, row.trainingCost, row.trainingCostUSD)}`,
-    `${t('옵션', 'Options')}: ${formatPricePair(lang, row.optionsCost, row.optionsCostUSD)}`,
-    `${t('합계', 'Total')}: ${formatPricePair(lang, row.individualTotalKRW, row.individualTotalUSD)}`,
-  ].join('\n');
 }
 
 export default function ReservationList({
@@ -185,15 +178,37 @@ export default function ReservationList({
           ),
         )
       ) {
-        onUpdateReservation(row.resId, { paymentStatus: '대기' });
+        onUpdateReservation(row.resId, {
+          paymentStatus: '대기',
+          guestPaymentClaimed: false,
+          guestPaymentClaimedAt: '',
+        });
       }
       return;
+    }
+    if (row.guestPaymentClaimed) {
+      if (
+        !window.confirm(
+          t(
+            '예약자가 결제 완료를 신고했습니다. 입금·결제를 더블체크한 뒤 결제 수단을 선택하세요.',
+            'Guest reported payment complete. Double-check the payment, then pick the method.',
+          ),
+        )
+      ) {
+        return;
+      }
     }
     setPaymentRow(row);
   };
 
   const handlePaymentPick = (name) => {
-    if (paymentRow) onUpdateReservation(paymentRow.resId, { paymentStatus: name });
+    if (paymentRow) {
+      onUpdateReservation(paymentRow.resId, {
+        paymentStatus: name,
+        guestPaymentClaimed: false,
+        guestPaymentClaimedAt: '',
+      });
+    }
     setPaymentRow(null);
   };
 
@@ -208,12 +223,30 @@ export default function ReservationList({
     try {
       const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
       const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
-      await emailjs.send(serviceId, templateId, {
-        to_email: row.repEmail,
-        to_name: row.repName,
-        message: buildInvoiceDetails(row, t, lang),
-        invoice_details: buildInvoiceDetails(row, t, lang),
+      const res = row.reservation || {
+        repName: row.repName,
+        repEmail: row.repEmail,
+        bookingInstructor: row.bookingInstructor,
+        paymentStatus: row.paymentStatus,
+        voucherStatus: row.voucherStatus,
+        roomsData: row.reservation?.roomsData,
+        grandTotalKRW: row.individualTotalKRW,
+        grandTotalUSD: row.individualTotalUSD,
+      };
+      const built = buildProfessionalReservationEmail({
+        kind: 'approval',
+        t,
+        lang,
+        res,
+        settings,
+        extraNote: t(
+          `승인 대상 다이버: ${row.name || '—'}`,
+          `Approved diver: ${row.name || '—'}`,
+        ),
       });
+      built.to_email = row.repEmail || built.to_email;
+      built.to_name = row.repName || built.to_name;
+      await emailjs.send(serviceId, templateId, toEmailJsParams(built));
       await addAdminLog({
         type: 'EDIT',
         message: `[승인메일 발송] ${row.name} (${row.repName}) 승인 메일이 발송되었습니다.`,
@@ -415,7 +448,7 @@ export default function ReservationList({
                 </th>
                 <th>{t('고객 정보 & 상세 내역', 'Guest Info & Details')}</th>
                 <th>{t('일정/숙박', 'Schedule/Stay')}</th>
-                <th>{t('다이빙/픽드랍', 'Diving/Transport')}</th>
+                <th>{t('기사/픽드랍', 'Driver/Transport')}</th>
                 <th style={{ textAlign: 'right' }}>
                   {t('총 정산금액', 'Total Invoice')}
                 </th>
@@ -607,51 +640,49 @@ export default function ReservationList({
                     </td>
 
                     <td style={{ borderBottom }}>
-                      <b>
-                        {row.discipline || '-'} ({row.targetDepth || 0}m)
-                      </b>
-                      {row.assignedLine ? (
-                        <span
-                          className="badge"
-                          style={{
-                            backgroundColor: '#7950f2',
-                            color: '#fff',
-                            marginLeft: 6,
-                          }}
-                        >
-                          {unitLabel(row.assignedLine, lang)}
-                        </span>
-                      ) : null}
                       <div
                         style={{
-                          marginTop: 6,
                           display: 'flex',
                           flexDirection: 'column',
-                          gap: 2,
-                          fontSize: 11,
+                          gap: 4,
+                          fontSize: 12,
                         }}
                       >
-                        {row.airportPickup && (
+                        <span
+                          className="transport-chip"
+                          style={{ alignSelf: 'flex-start' }}
+                        >
+                          👤{' '}
+                          {row.assignedDriver || t('기사미배정', 'No Driver')}
+                          {' · '}
+                          🚐{' '}
+                          {row.assignedVehicle ||
+                            t('차량미배정', 'No Vehicle')}
+                        </span>
+                        {row.airportPickup ? (
                           <span style={{ color: '#3182f6', fontWeight: 700 }}>
-                            🛬 {t('픽업:', 'Pickup:')}{' '}
-                            {row.pickupFlight || 'N/A'} (
-                            {row.pickupTime || '--:--'})
+                            🛬 {t('픽업', 'Pickup')}{' '}
+                            {row.pickupTime || '--:--'}
+                            {row.pickupFlight
+                              ? ` (${row.pickupFlight})`
+                              : ''}
+                          </span>
+                        ) : (
+                          <span style={{ color: '#8b95a1', fontWeight: 600 }}>
+                            🛬 {t('픽업 없음', 'No pickup')}
                           </span>
                         )}
-                        {row.airportDropoff && (
+                        {row.airportDropoff ? (
                           <span style={{ color: '#e03131', fontWeight: 700 }}>
-                            🛫 {t('드랍:', 'Dropoff:')}{' '}
-                            {row.dropoffFlight || 'N/A'} (
-                            {row.dropoffTime || '--:--'})
+                            🛫 {t('드랍', 'Dropoff')}{' '}
+                            {row.dropoffTime || '--:--'}
+                            {row.dropoffFlight
+                              ? ` (${row.dropoffFlight})`
+                              : ''}
                           </span>
-                        )}
-                        {(row.assignedVehicle || row.assignedDriver) && (
-                          <span className="transport-chip">
-                            🚐{' '}
-                            {row.assignedVehicle ||
-                              t('차량미배정', 'No Vehicle')}{' '}
-                            | 👤{' '}
-                            {row.assignedDriver || t('기사미배정', 'No Driver')}
+                        ) : (
+                          <span style={{ color: '#8b95a1', fontWeight: 600 }}>
+                            🛫 {t('드랍 없음', 'No dropoff')}
                           </span>
                         )}
                       </div>
@@ -724,12 +755,28 @@ export default function ReservationList({
                       <div className="action-btn-wrapper">
                         <button
                           type="button"
-                          className="status-btn"
+                          className={`status-btn${
+                            !paid && row.guestPaymentClaimed
+                              ? ' payment-confirm-alert'
+                              : ''
+                          }`}
                           style={{
                             margin: 0,
-                            backgroundColor: paid ? '#04c09e' : '#8b95a1',
+                            backgroundColor: paid
+                              ? '#04c09e'
+                              : row.guestPaymentClaimed
+                                ? '#f04452'
+                                : '#8b95a1',
                             cursor: instructor ? 'default' : 'pointer',
                           }}
+                          title={
+                            !paid && row.guestPaymentClaimed
+                              ? t(
+                                  '예약자 결제완료 신고 — 더블체크 후 확인',
+                                  'Guest claimed paid — double-check then confirm',
+                                )
+                              : undefined
+                          }
                           onClick={() => {
                             if (instructor) return;
                             handlePaymentClick(row);
@@ -737,7 +784,9 @@ export default function ReservationList({
                         >
                           {paid
                             ? `✅ ${row.paymentStatus}`
-                            : t('💳 결제하기', 'Payment')}
+                            : row.guestPaymentClaimed
+                              ? t('💳 결제확인', 'Confirm pay')
+                              : t('💳 결제하기', 'Payment')}
                         </button>
 
                         <button

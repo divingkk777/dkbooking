@@ -1,0 +1,22 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    /** Ad banner images — public read; size capped at 50MB */
+    match /ads/{fileName} {
+      allow read: if true;
+      allow write: if request.resource != null
+        && request.resource.size < 50 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if true;
+    }
+
+    /** Quote / approval images for email links — public read; 8MB cap */
+    match /mail-quotes/{fileName} {
+      allow read: if true;
+      allow write: if request.resource != null
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if true;
+    }
+  }
+}

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { subscribeSettings } from '../data/settingsRepo';
 import AdminApp from '../features/admin/AdminApp';
 import GuestApp from '../features/guest/GuestApp';
+import MyReservations from '../features/guest/MyReservations';
 import { ToastProvider } from '../ui/ToastContext';
 import {
   BOOTSTRAP_ADMINS,
@@ -63,7 +64,13 @@ export function BookingApp({
       <BrowserRouter>
         <Routes>
           {features.guestBooking !== false && (
-            <Route path="/" element={<GuestApp settings={settings} />} />
+            <>
+              <Route path="/" element={<GuestApp settings={settings} />} />
+              <Route
+                path="/my"
+                element={<MyReservations settings={settings} />}
+              />
+            </>
           )}
           {features.adminPortal !== false && (
             <Route path="/admin" element={<AdminApp settings={settings} />} />

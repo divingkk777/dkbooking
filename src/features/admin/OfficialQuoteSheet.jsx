@@ -1,26 +1,34 @@
 import BrandLockup, {
   BRAND_ASSETS,
   openKakaoTalk,
+  openWhatsApp,
   whatsappHref,
 } from '../../components/BrandLockup';
 
 export const QUOTE_BRAND = {
-  titleKO: '공식 견적서',
-  titleEN: 'Official Quotation',
+  titleKO: '견적서',
+  titleEN: 'Quotation',
   centerKO: 'IDA × DOUBLE K FREEDIVING CENTER',
   kakaoId: BRAND_ASSETS.kakaoId,
   whatsappName: BRAND_ASSETS.whatsappName,
   whatsappDisplay: BRAND_ASSETS.whatsappDisplay,
 };
 
-export function OfficialQuoteHeader({ t, lang = 'KO', subtitle }) {
+export function OfficialQuoteHeader({
+  t,
+  lang = 'KO',
+  subtitle,
+  titleKO,
+  titleEN,
+}) {
   const isEN = String(lang || '').toUpperCase() === 'EN';
   return (
     <div className="quote-official-header">
+      <BrandLockup variant="footer" showTagline={false} />
       <div className="quote-official-titles">
         <div className="quote-official-eyebrow">{QUOTE_BRAND.centerKO}</div>
         <h2 className="quote-official-title">
-          🧾 {t(QUOTE_BRAND.titleKO, QUOTE_BRAND.titleEN)}
+          {t(titleKO || QUOTE_BRAND.titleKO, titleEN || QUOTE_BRAND.titleEN)}
         </h2>
         {subtitle ? (
           <div className="quote-official-subtitle">{subtitle}</div>
@@ -84,7 +92,11 @@ export function OfficialQuoteContacts({ t, lang = 'KO' }) {
           }
           href={wa}
           target="_blank"
-          rel="noreferrer"
+          rel="noopener noreferrer"
+          onClick={(e) => {
+            e.preventDefault();
+            openWhatsApp(lang, 'consult');
+          }}
         >
           <div className="quote-contact-label">
             {t('ENG · WhatsApp', 'WhatsApp (English)')}

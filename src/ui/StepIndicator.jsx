@@ -2,7 +2,7 @@ export default function StepIndicator({ step, maxReached, onJump, t }) {
   const items = [
     { n: 1, label: t('기본 정보', 'Info') },
     { n: 2, label: t('객실/다이버', 'Rooms/Divers') },
-    { n: 3, label: t('서명/완료', 'Signature') },
+    { n: 3, label: t('약관 동의', 'Agreement') },
   ];
 
   return (

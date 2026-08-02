@@ -1,14 +1,9 @@
 import { useState } from 'react';
+import {
+  AD_IMAGE_MAX_BYTES,
+  uploadAdImage,
+} from '../../../data/adsStorage';
 import { useToast } from '../../../ui/ToastContext';
-
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
 
 export default function AdsTab({ t, settings, onPatchSettings }) {
   const toast = useToast();
@@ -17,6 +12,7 @@ export default function AdsTab({ t, settings, onPatchSettings }) {
   const [linkUrl, setLinkUrl] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const saveAds = async (next) => {
     setSaving(true);
@@ -53,18 +49,47 @@ export default function AdsTab({ t, settings, onPatchSettings }) {
 
   const onPickImage = async (e) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
-    if (file.size > 1.5 * 1024 * 1024) {
+    if (!String(file.type || '').startsWith('image/')) {
+      toast.warn(t('이미지 파일만 업로드할 수 있습니다.', 'Image files only.'));
+      return;
+    }
+    if (file.size > AD_IMAGE_MAX_BYTES) {
       toast.warn(
         t(
-          '이미지는 1.5MB 이하로 올려주세요.',
-          'Please upload an image under 1.5MB.',
+          '이미지는 50MB 이하로 올려주세요.',
+          'Please upload an image under 50MB.',
         ),
       );
       return;
     }
-    const dataUrl = await readFileAsDataUrl(file);
-    setImageUrl(dataUrl);
+    setUploading(true);
+    try {
+      // Upload to Storage (URL only in Firestore) — avoids 1MB settings doc limit.
+      const url = await uploadAdImage(file);
+      setImageUrl(url);
+      toast.success(t('이미지를 업로드했습니다.', 'Image uploaded.'));
+    } catch (err) {
+      if (err?.message === 'FILE_TOO_LARGE') {
+        toast.warn(
+          t(
+            '이미지는 50MB 이하로 올려주세요.',
+            'Please upload an image under 50MB.',
+          ),
+        );
+      } else {
+        toast.error(
+          err?.message ||
+            t(
+              '업로드 실패. Storage 규칙을 배포했는지 확인해 주세요.',
+              'Upload failed. Deploy Storage rules if needed.',
+            ),
+        );
+      }
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -75,8 +100,8 @@ export default function AdsTab({ t, settings, onPatchSettings }) {
         </h3>
         <p style={{ color: 'var(--muted)', fontSize: 13 }}>
           {t(
-            '게스트 예약 화면 상단에 롤링 배너로 표시됩니다. 활성 광고만 노출됩니다.',
-            'Shown as a rolling banner on top of the guest booking screen. Only active ads are displayed.',
+            '게스트 예약 화면 상단에 롤링 배너로 표시됩니다. 활성 광고만 노출됩니다. 이미지는 Firebase Storage에 업로드되며 최대 50MB까지 가능합니다.',
+            'Shown as a rolling banner on the guest booking screen. Images upload to Firebase Storage (max 50MB).',
           )}
         </p>
 
@@ -115,8 +140,14 @@ export default function AdsTab({ t, settings, onPatchSettings }) {
             type="file"
             accept="image/*"
             style={{ marginTop: 8 }}
+            disabled={uploading || saving}
             onChange={onPickImage}
           />
+          {uploading ? (
+            <div style={{ marginTop: 8, fontSize: 13, color: '#3182f6' }}>
+              {t('업로드 중…', 'Uploading…')}
+            </div>
+          ) : null}
           {imageUrl ? (
             <img
               src={imageUrl}

@@ -24,16 +24,60 @@ function StatusToggle({ on, onClick, onLabel, offLabel, color }) {
   );
 }
 
-function ManagerCard({ title, color, hint, children, addBar, footer }) {
+function ManagerCard({
+  title,
+  color,
+  hint,
+  children,
+  addBar,
+  footer,
+  defaultOpen = true,
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="card" style={{ border: `2px solid ${color}` }}>
-      <h4 style={{ marginTop: 0, color, fontSize: 17 }}>{title}</h4>
-      {hint ? (
-        <p style={{ fontSize: 12, color: '#6b7684', marginBottom: 16 }}>{hint}</p>
+    <div
+      className="card"
+      style={{
+        border: `2px solid ${color}`,
+        padding: 0,
+        overflow: 'hidden',
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          margin: 0,
+          padding: '14px 16px',
+          border: 'none',
+          background: `${color}14`,
+          color,
+          cursor: 'pointer',
+          textAlign: 'left',
+        }}
+      >
+        <h4 style={{ margin: 0, color, fontSize: 17 }}>{title}</h4>
+        <span style={{ fontSize: 12, fontWeight: 800, opacity: 0.85 }} aria-hidden>
+          {open ? '▲' : '▼'}
+        </span>
+      </button>
+      {open ? (
+        <div style={{ padding: '4px 16px 16px' }}>
+          {hint ? (
+            <p style={{ fontSize: 12, color: '#6b7684', marginBottom: 16 }}>
+              {hint}
+            </p>
+          ) : null}
+          {addBar}
+          {children}
+          {footer}
+        </div>
       ) : null}
-      {addBar}
-      {children}
-      {footer}
     </div>
   );
 }
@@ -72,6 +116,7 @@ export default function SettingsTab({
   const [accounts, setAccounts] = useState(() =>
     structuredClone(settings.accountsConfig || []),
   );
+  const [editingAccountId, setEditingAccountId] = useState('');
   const [units, setUnits] = useState(() =>
     structuredClone(settings.unitsConfig || []),
   );
@@ -87,7 +132,8 @@ export default function SettingsTab({
   const [promoCodes, setPromoCodes] = useState(() =>
     resolvePromoCodesConfig(settings.promoCodesConfig),
   );
-  const [newPromo, setNewPromo] = useState({
+  const [editingPromoId, setEditingPromoId] = useState('');
+  const emptyPromoForm = {
     code: '',
     nameKO: '',
     nameEN: '',
@@ -96,7 +142,8 @@ export default function SettingsTab({
     discountUSD: '',
     trainingScope: 'ALL',
     scopeIds: [],
-  });
+  };
+  const [newPromo, setNewPromo] = useState(() => ({ ...emptyPromoForm }));
 
   const [adminId1, setAdminId1] = useState(settings.adminId1 || '');
   const [adminPassword1, setAdminPassword1] = useState(
@@ -121,11 +168,9 @@ export default function SettingsTab({
     priceUSD: '',
   });
   const [newAccount, setNewAccount] = useState('');
-  const [newUnit, setNewUnit] = useState({
-    nameKO: '',
-    nameEN: '',
-    lines: 4,
-  });
+  const emptyUnitForm = { nameKO: '', nameEN: '', lines: 4 };
+  const [newUnit, setNewUnit] = useState(() => ({ ...emptyUnitForm }));
+  const [editingUnitId, setEditingUnitId] = useState('');
   const [newVehicle, setNewVehicle] = useState({
     nameKO: '',
     nameEN: '',
@@ -205,17 +250,34 @@ export default function SettingsTab({
     );
   };
 
-  const addPromoCode = () => {
+  const persistPromoCodes = async (nextList, okMsg) => {
+    const next = resolvePromoCodesConfig(nextList);
+    setPromoCodes(next);
+    await save(
+      { promoCodesConfig: next },
+      okMsg || t('인솔자코드 설정이 저장되었습니다.', 'Escort codes saved.'),
+    );
+  };
+
+  const resetPromoForm = () => {
+    setEditingPromoId('');
+    setNewPromo({ ...emptyPromoForm });
+  };
+
+  const buildPromoFromForm = () => {
     const code = String(newPromo.code || '')
       .trim()
       .toUpperCase();
     if (!code) {
       toast.error(t('인솔자코드를 입력하세요.', 'Enter escort code.'));
-      return;
+      return null;
     }
-    if (promoCodes.some((p) => p.code === code)) {
+    const dup = promoCodes.some(
+      (p) => p.code === code && p.id !== editingPromoId,
+    );
+    if (dup) {
       toast.error(t('이미 존재하는 코드입니다.', 'Code already exists.'));
-      return;
+      return null;
     }
     const scope =
       newPromo.trainingScope === 'ALL'
@@ -228,40 +290,67 @@ export default function SettingsTab({
           'Select training types in scope.',
         ),
       );
-      return;
+      return null;
     }
-    setPromoCodes((prev) => [
-      ...prev,
-      {
-        id: `PROMO_${Date.now()}`,
-        code,
-        nameKO: newPromo.nameKO.trim() || code,
-        nameEN: newPromo.nameEN.trim() || newPromo.nameKO.trim() || code,
-        isActive: true,
-        discountType: newPromo.discountType === 'amount' ? 'amount' : 'percent',
-        discountValue: Number(newPromo.discountValue) || 0,
-        discountUSD: Number(newPromo.discountUSD) || 0,
-        trainingScope: scope,
-      },
-    ]);
+    const discountValue = Number(newPromo.discountValue) || 0;
+    if (discountValue <= 0) {
+      toast.error(
+        t('할인 값을 0보다 크게 입력하세요.', 'Enter a discount greater than 0.'),
+      );
+      return null;
+    }
+    return {
+      id: editingPromoId || `PROMO_${Date.now()}`,
+      code,
+      nameKO: newPromo.nameKO.trim() || code,
+      nameEN: newPromo.nameEN.trim() || newPromo.nameKO.trim() || code,
+      isActive: true,
+      discountType: newPromo.discountType === 'amount' ? 'amount' : 'percent',
+      discountValue,
+      discountUSD: Number(newPromo.discountUSD) || 0,
+      trainingScope: scope,
+    };
+  };
+
+  const addPromoCode = async () => {
+    const row = buildPromoFromForm();
+    if (!row) return;
+    if (editingPromoId) {
+      const next = promoCodes.map((p) =>
+        p.id === editingPromoId ? { ...p, ...row, isActive: p.isActive } : p,
+      );
+      await persistPromoCodes(
+        next,
+        t('인솔자코드를 수정·저장했습니다.', 'Escort code updated.'),
+      );
+    } else {
+      await persistPromoCodes(
+        [...promoCodes, row],
+        t('인솔자코드를 추가·저장했습니다.', 'Escort code added.'),
+      );
+    }
+    resetPromoForm();
+  };
+
+  const startEditPromo = (row) => {
+    setEditingPromoId(row.id);
     setNewPromo({
-      code: '',
-      nameKO: '',
-      nameEN: '',
-      discountType: 'percent',
-      discountValue: '',
-      discountUSD: '',
-      trainingScope: 'ALL',
-      scopeIds: [],
+      code: row.code || '',
+      nameKO: row.nameKO || '',
+      nameEN: row.nameEN || '',
+      discountType: row.discountType === 'amount' ? 'amount' : 'percent',
+      discountValue: row.discountValue ?? '',
+      discountUSD: row.discountUSD ?? '',
+      trainingScope:
+        row.trainingScope === 'ALL' || !row.trainingScope
+          ? 'ALL'
+          : 'SELECTED',
+      scopeIds: Array.isArray(row.trainingScope) ? [...row.trainingScope] : [],
     });
   };
 
   const savePromoCodes = async () => {
-    const next = resolvePromoCodesConfig(promoCodes);
-    await save(
-      { promoCodesConfig: next },
-      t('인솔자코드 설정이 저장되었습니다.', 'Escort codes saved.'),
-    );
+    await persistPromoCodes(promoCodes);
   };
 
   const togglePromoScopeId = (id) => {
@@ -361,60 +450,127 @@ export default function SettingsTab({
     );
   };
 
+  const resetAccountForm = () => {
+    setEditingAccountId('');
+    setNewAccount('');
+  };
+
   const addAccount = async () => {
-    const name = newAccount.trim().toUpperCase();
+    const name = newAccount.trim();
     if (!name) {
       toast.error(t('어카운트명을 입력해 주세요.', 'Account name required.'));
+      return;
+    }
+    const dup = accounts.some(
+      (a) =>
+        String(a.name || '').toLowerCase() === name.toLowerCase() &&
+        a.id !== editingAccountId,
+    );
+    if (dup) {
+      toast.error(
+        t('이미 존재하는 어카운트명입니다.', 'Account name already exists.'),
+      );
+      return;
+    }
+    if (editingAccountId) {
+      const next = accounts.map((a) =>
+        a.id === editingAccountId ? { ...a, name } : a,
+      );
+      await patchAccounts(
+        next,
+        t('어카운트명을 수정·저장했습니다.', 'Account name updated.'),
+      );
+      resetAccountForm();
       return;
     }
     const next = [
       ...accounts,
       { id: `acc_${Date.now()}`, name, isActive: true },
     ];
-    setAccounts(next);
     setNewAccount('');
-    await save(
-      { accountsConfig: next },
+    await patchAccounts(
+      next,
       t('결제 어카운트 설정이 저장되었습니다.', 'Saved payment accounts config.'),
     );
   };
 
-  const patchAccounts = async (next) => {
+  const startEditAccount = (row) => {
+    setEditingAccountId(row.id);
+    setNewAccount(row.name || '');
+  };
+
+  const patchAccounts = async (next, okMsg) => {
     setAccounts(next);
     await save(
       { accountsConfig: next },
-      t('결제 어카운트 설정이 저장되었습니다.', 'Saved payment accounts config.'),
+      okMsg ||
+        t('결제 어카운트 설정이 저장되었습니다.', 'Saved payment accounts config.'),
     );
+  };
+
+  const resetUnitForm = () => {
+    setEditingUnitId('');
+    setNewUnit({ ...emptyUnitForm });
   };
 
   const addUnit = async () => {
-    if (!newUnit.nameKO.trim()) {
+    const nameKO = newUnit.nameKO.trim();
+    if (!nameKO) {
       toast.error(t('유닛 한글명을 입력해 주세요.', 'Unit name required.'));
+      return;
+    }
+    const dup = units.some(
+      (u) =>
+        String(u.nameKO || '').toLowerCase() === nameKO.toLowerCase() &&
+        u.id !== editingUnitId,
+    );
+    if (dup) {
+      toast.error(
+        t('이미 존재하는 유닛명입니다.', 'Unit name already exists.'),
+      );
+      return;
+    }
+    const row = {
+      nameKO,
+      nameEN: newUnit.nameEN.trim() || nameKO,
+      lines: Math.max(1, Number(newUnit.lines) || 4),
+    };
+    if (editingUnitId) {
+      const next = units.map((u) =>
+        u.id === editingUnitId ? { ...u, ...row } : u,
+      );
+      await patchUnits(
+        next,
+        t('유닛을 수정·저장했습니다.', 'Unit updated.'),
+      );
+      resetUnitForm();
       return;
     }
     const next = [
       ...units,
-      {
-        id: `u_${Date.now()}`,
-        nameKO: newUnit.nameKO.trim(),
-        nameEN: newUnit.nameEN.trim() || newUnit.nameKO.trim(),
-        lines: Math.max(1, Number(newUnit.lines) || 4),
-        isActive: true,
-      },
+      { id: `u_${Date.now()}`, ...row, isActive: true },
     ];
-    setUnits(next);
-    setNewUnit({ nameKO: '', nameEN: '', lines: 4 });
-    await save(
-      { unitsConfig: next },
+    resetUnitForm();
+    await patchUnits(
+      next,
       t('유닛 설정이 저장되었습니다.', 'Saved units config.'),
     );
   };
 
-  const patchUnits = async (next) => {
+  const startEditUnit = (row) => {
+    setEditingUnitId(row.id);
+    setNewUnit({
+      nameKO: row.nameKO || '',
+      nameEN: row.nameEN || '',
+      lines: row.lines ?? 4,
+    });
+  };
+
+  const patchUnits = async (next, okMsg) => {
     setUnits(next);
     await save(
       { unitsConfig: next },
-      t('유닛 설정이 저장되었습니다.', 'Saved units config.'),
+      okMsg || t('유닛 설정이 저장되었습니다.', 'Saved units config.'),
     );
   };
 
@@ -513,11 +669,19 @@ export default function SettingsTab({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <div className="sub-card">
-        <h4 style={{ marginTop: 0 }}>
-          ⚙️ {t('기본 환경 설정', 'Basic Settings')}
-        </h4>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+      <ManagerCard
+        color="#3182f6"
+        title={`⚙️ ${t('기본 환경 설정', 'Basic Settings')}`}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 16,
+            flexWrap: 'wrap',
+            paddingTop: 8,
+          }}
+        >
           <label className="label-text" style={{ margin: 0 }}>
             {t('USD 적용 환율 (₩):', 'USD Exchange Rate (₩):')}
           </label>
@@ -542,7 +706,7 @@ export default function SettingsTab({
             {t('환율 저장', 'Save Rate')}
           </button>
         </div>
-      </div>
+      </ManagerCard>
 
       <ManagerCard
         color="#f59f00"
@@ -787,9 +951,17 @@ export default function SettingsTab({
               backgroundColor: '#f3f0ff',
               padding: 14,
               borderRadius: 12,
-              border: '1px solid #d0bfff',
+              border: editingPromoId
+                ? '2px solid #7048e8'
+                : '1px solid #d0bfff',
             }}
           >
+            {editingPromoId ? (
+              <div style={{ fontWeight: 800, color: '#7048e8', fontSize: 13 }}>
+                {t('수정 중', 'Editing')}:{' '}
+                {promoCodes.find((p) => p.id === editingPromoId)?.code || ''}
+              </div>
+            ) : null}
             <div className="grid-2">
               <div>
                 <label className="label-text">{t('인솔자코드', 'Escort Code')}</label>
@@ -939,14 +1111,26 @@ export default function SettingsTab({
                 </div>
               ) : null}
             </div>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={addPromoCode}
-              style={{ justifySelf: 'start' }}
-            >
-              + {t('인솔자코드 추가', 'Add escort code')}
-            </button>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={addPromoCode}
+              >
+                {editingPromoId
+                  ? `✓ ${t('인솔자코드 수정 저장', 'Save escort code edits')}`
+                  : `+ ${t('인솔자코드 추가', 'Add escort code')}`}
+              </button>
+              {editingPromoId ? (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={resetPromoForm}
+                >
+                  {t('수정 취소', 'Cancel edit')}
+                </button>
+              ) : null}
+            </div>
           </div>
         }
         footer={
@@ -981,7 +1165,14 @@ export default function SettingsTab({
                 </tr>
               ) : (
                 promoCodes.map((row, idx) => (
-                  <tr key={row.id || row.code}>
+                  <tr
+                    key={row.id || row.code}
+                    style={
+                      editingPromoId === row.id
+                        ? { background: '#f3f0ff' }
+                        : undefined
+                    }
+                  >
                     <td style={{ fontWeight: 800 }}>{row.code}</td>
                     <td>{row.nameKO || row.nameEN}</td>
                     <td>
@@ -1009,27 +1200,46 @@ export default function SettingsTab({
                         color="#7048e8"
                         onLabel={t('사용', 'On')}
                         offLabel={t('중지', 'Off')}
-                        onClick={() =>
-                          setPromoCodes((prev) =>
-                            prev.map((p, i) =>
-                              i === idx
-                                ? { ...p, isActive: p.isActive === false }
-                                : p,
+                        onClick={() => {
+                          const next = promoCodes.map((p, i) =>
+                            i === idx
+                              ? { ...p, isActive: p.isActive === false }
+                              : p,
+                          );
+                          void persistPromoCodes(
+                            next,
+                            t(
+                              '인솔자코드 상태가 저장되었습니다.',
+                              'Escort code status saved.',
                             ),
-                          )
-                        }
+                          );
+                        }}
                       />
                     </td>
-                    <td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        style={{ color: '#7048e8', marginRight: 4 }}
+                        onClick={() => startEditPromo(row)}
+                      >
+                        {t('수정', 'Edit')}
+                      </button>
                       <button
                         type="button"
                         className="btn-ghost"
                         style={{ color: '#f04452' }}
-                        onClick={() =>
-                          setPromoCodes((prev) =>
-                            prev.filter((_, i) => i !== idx),
-                          )
-                        }
+                        onClick={() => {
+                          if (editingPromoId === row.id) resetPromoForm();
+                          const next = promoCodes.filter((_, i) => i !== idx);
+                          void persistPromoCodes(
+                            next,
+                            t(
+                              '인솔자코드를 삭제·저장했습니다.',
+                              'Escort code deleted.',
+                            ),
+                          );
+                        }}
                       >
                         {t('삭제', 'Delete')}
                       </button>
@@ -1443,51 +1653,84 @@ export default function SettingsTab({
         color="#0ca678"
         title={`💳 ${t('입금/결제 어카운트 동적 관리자', 'Payment Account Manager')}`}
         hint={t(
-          '결제 처리 시 사용할 어카운트 명칭을 추가하거나 활성(ON)/비활성(OFF) 상태를 설정합니다.',
-          'Manage payment account names and ON/OFF toggle status.',
+          '결제 처리 시 사용할 어카운트 명칭을 추가·수정하거나 활성(ON)/비활성(OFF) 상태를 설정합니다.',
+          'Add, edit, or toggle payment account names used when confirming payment.',
         )}
         addBar={
           <div
             style={{
               display: 'flex',
+              flexWrap: 'wrap',
               gap: 10,
               marginBottom: 20,
-              maxWidth: 420,
+              maxWidth: 520,
+              alignItems: 'center',
             }}
           >
             <input
               className="input-field"
-              placeholder={t(
-                '새 어카운트명 (예: KAKAO, CASH)',
-                'New account name',
-              )}
+              placeholder={
+                editingAccountId
+                  ? t('어카운트명 수정', 'Edit account name')
+                  : t(
+                      '새 어카운트명 (예: KAKAO, CASH)',
+                      'New account name',
+                    )
+              }
               value={newAccount}
               onChange={(e) => setNewAccount(e.target.value)}
+              style={
+                editingAccountId
+                  ? { borderColor: '#0ca678', borderWidth: 2 }
+                  : undefined
+              }
             />
             <button
               type="button"
               className="btn-primary"
-              style={{ width: 'auto', backgroundColor: '#0ca678', whiteSpace: 'nowrap' }}
+              style={{
+                width: 'auto',
+                backgroundColor: '#0ca678',
+                whiteSpace: 'nowrap',
+              }}
               onClick={addAccount}
             >
-              + {t('어카운트 추가', 'Add Account')}
+              {editingAccountId
+                ? `✓ ${t('어카운트 수정 저장', 'Save account edit')}`
+                : `+ ${t('어카운트 추가', 'Add Account')}`}
             </button>
+            {editingAccountId ? (
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={resetAccountForm}
+              >
+                {t('수정 취소', 'Cancel edit')}
+              </button>
+            ) : null}
           </div>
         }
       >
         <div className="table-wrap">
-          <table className="data-table" style={{ maxWidth: 600 }}>
+          <table className="data-table" style={{ maxWidth: 720 }}>
             <thead>
               <tr style={{ backgroundColor: '#e6fcf5', color: '#0ca678' }}>
                 <th>No.</th>
                 <th>{t('어카운트 명칭', 'Account Name')}</th>
                 <th style={{ textAlign: 'center' }}>{t('활성화 상태', 'Status')}</th>
-                <th style={{ textAlign: 'center' }}>{t('삭제', 'Delete')}</th>
+                <th style={{ textAlign: 'center' }}>{t('관리', 'Manage')}</th>
               </tr>
             </thead>
             <tbody>
               {accounts.map((a, idx) => (
-                <tr key={a.id || idx}>
+                <tr
+                  key={a.id || idx}
+                  style={
+                    editingAccountId === a.id
+                      ? { background: '#e6fcf5' }
+                      : undefined
+                  }
+                >
                   <td style={{ textAlign: 'center', fontWeight: 700 }}>{idx + 1}</td>
                   <td>
                     <b>💳 {a.name}</b>
@@ -1509,7 +1752,15 @@ export default function SettingsTab({
                       }
                     />
                   </td>
-                  <td style={{ textAlign: 'center' }}>
+                  <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      style={{ color: '#0ca678', marginRight: 4 }}
+                      onClick={() => startEditAccount(a)}
+                    >
+                      {t('수정', 'Edit')}
+                    </button>
                     <button
                       type="button"
                       className="status-btn"
@@ -1525,6 +1776,7 @@ export default function SettingsTab({
                         ) {
                           return;
                         }
+                        if (editingAccountId === a.id) resetAccountForm();
                         patchAccounts(accounts.filter((x) => x.id !== a.id));
                       }}
                     >
@@ -1541,10 +1793,25 @@ export default function SettingsTab({
       <ManagerCard
         color="#7950f2"
         title={`🚢 ${t('다이빙 유닛(배) 및 라인 관리자', 'Diving Boat & Line Manager')}`}
+        hint={t(
+          '유닛 명칭·라인 수를 추가·수정하거나 가동(ON)/중지(OFF)를 설정합니다.',
+          'Add or edit unit names and line counts, and toggle ON/OFF.',
+        )}
         addBar={
           <div
-            style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}
+            style={{
+              display: 'flex',
+              gap: 8,
+              flexWrap: 'wrap',
+              marginBottom: 16,
+              alignItems: 'center',
+            }}
           >
+            {editingUnitId ? (
+              <span style={{ fontWeight: 800, color: '#7950f2', fontSize: 13 }}>
+                {t('수정 중', 'Editing')}
+              </span>
+            ) : null}
             <input
               className="input-field"
               placeholder={t('유닛 한글명 (예: 방카)', 'Unit KO')}
@@ -1552,7 +1819,12 @@ export default function SettingsTab({
               onChange={(e) =>
                 setNewUnit((p) => ({ ...p, nameKO: e.target.value }))
               }
-              style={{ width: 150 }}
+              style={{
+                width: 150,
+                ...(editingUnitId
+                  ? { borderColor: '#7950f2', borderWidth: 2 }
+                  : {}),
+              }}
             />
             <input
               className="input-field"
@@ -1561,17 +1833,28 @@ export default function SettingsTab({
               onChange={(e) =>
                 setNewUnit((p) => ({ ...p, nameEN: e.target.value }))
               }
-              style={{ width: 150 }}
+              style={{
+                width: 150,
+                ...(editingUnitId
+                  ? { borderColor: '#7950f2', borderWidth: 2 }
+                  : {}),
+              }}
             />
             <input
               type="number"
+              min={1}
               className="input-field"
               placeholder={t('라인 수', 'Lines')}
               value={newUnit.lines}
               onChange={(e) =>
                 setNewUnit((p) => ({ ...p, lines: e.target.value }))
               }
-              style={{ width: 90 }}
+              style={{
+                width: 90,
+                ...(editingUnitId
+                  ? { borderColor: '#7950f2', borderWidth: 2 }
+                  : {}),
+              }}
             />
             <button
               type="button"
@@ -1579,8 +1862,19 @@ export default function SettingsTab({
               style={{ width: 'auto', backgroundColor: '#7950f2' }}
               onClick={addUnit}
             >
-              + {t('유닛 추가', 'Add Unit')}
+              {editingUnitId
+                ? `✓ ${t('유닛 수정 저장', 'Save unit edit')}`
+                : `+ ${t('유닛 추가', 'Add Unit')}`}
             </button>
+            {editingUnitId ? (
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={resetUnitForm}
+              >
+                {t('수정 취소', 'Cancel edit')}
+              </button>
+            ) : null}
           </div>
         }
       >
@@ -1591,12 +1885,19 @@ export default function SettingsTab({
                 <th>{t('유닛 명칭', 'Unit Name')}</th>
                 <th>{t('운용 라인 수', 'Lines')}</th>
                 <th style={{ textAlign: 'center' }}>{t('가동 상태', 'Status')}</th>
-                <th style={{ textAlign: 'center' }}>{t('삭제', 'Delete')}</th>
+                <th style={{ textAlign: 'center' }}>{t('관리', 'Manage')}</th>
               </tr>
             </thead>
             <tbody>
               {units.map((u) => (
-                <tr key={u.id}>
+                <tr
+                  key={u.id}
+                  style={
+                    editingUnitId === u.id
+                      ? { background: '#f3f0ff' }
+                      : undefined
+                  }
+                >
                   <td>
                     <b>{u.nameKO}</b>{' '}
                     <span style={{ color: '#8b95a1', fontSize: 12 }}>
@@ -1626,7 +1927,15 @@ export default function SettingsTab({
                       }
                     />
                   </td>
-                  <td style={{ textAlign: 'center' }}>
+                  <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      style={{ color: '#7950f2', marginRight: 4 }}
+                      onClick={() => startEditUnit(u)}
+                    >
+                      {t('수정', 'Edit')}
+                    </button>
                     <button
                       type="button"
                       className="status-btn"
@@ -1639,6 +1948,7 @@ export default function SettingsTab({
                         ) {
                           return;
                         }
+                        if (editingUnitId === u.id) resetUnitForm();
                         patchUnits(units.filter((x) => x.id !== u.id));
                       }}
                     >
@@ -1968,11 +2278,11 @@ export default function SettingsTab({
       </ManagerCard>
 
       {isFullAdmin && (
-        <div className="card" style={{ border: '2px solid #495057' }}>
-          <h4 style={{ marginTop: 0, color: '#495057', fontSize: 17 }}>
-            🔐 {t('관리자 로그인 계정', 'Admin Login Accounts')}
-          </h4>
-          <div className="grid-2">
+        <ManagerCard
+          color="#495057"
+          title={`🔐 ${t('관리자 로그인 계정', 'Admin Login Accounts')}`}
+        >
+          <div className="grid-2" style={{ paddingTop: 8 }}>
             <div>
               <label className="label-text">{t('관리자1 ID', 'Admin1 ID')}</label>
               <input
@@ -2030,7 +2340,7 @@ export default function SettingsTab({
               {t('계정 저장', 'Save Accounts')}
             </button>
           </div>
-        </div>
+        </ManagerCard>
       )}
     </div>
   );

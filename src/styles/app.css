@@ -315,6 +315,75 @@ select.input-field {
   color: #0ca678;
 }
 
+.guest-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px 14px;
+  margin-bottom: 12px;
+  min-width: 0;
+  position: relative;
+  min-height: 40px;
+}
+
+.guest-topbar-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+  z-index: 1;
+}
+
+.guest-topbar-slogan {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(48vw, 340px);
+  font-size: 13px;
+  font-weight: 800;
+  color: #4e5968;
+  text-align: center;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.guest-topbar-my {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.guest-topbar .lang-switch a.guest-topbar-my.active,
+.guest-topbar .lang-switch .guest-topbar-my.active {
+  color: var(--brand);
+  font-weight: 800;
+}
+
+@media (max-width: 639px) {
+  .guest-topbar {
+    flex-direction: column;
+    align-items: stretch;
+    min-height: 0;
+  }
+
+  .guest-topbar-slogan {
+    position: static;
+    left: auto;
+    transform: none;
+    max-width: none;
+    width: 100%;
+    margin-bottom: 2px;
+  }
+
+  .guest-topbar-right {
+    width: 100%;
+  }
+}
+
 .lang-switch {
   display: flex;
   gap: 8px;
@@ -913,6 +982,21 @@ table.table-custom td {
   cursor: not-allowed;
 }
 
+@keyframes payment-confirm-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(240, 68, 82, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(240, 68, 82, 0);
+  }
+}
+
+.status-btn.payment-confirm-alert {
+  animation: payment-confirm-pulse 1.4s ease-in-out infinite;
+  font-weight: 900;
+}
+
 .action-btn-wrapper,
 .action-btn-grid {
   display: flex;
@@ -923,6 +1007,44 @@ table.table-custom td {
   min-width: 0;
   width: auto;
   max-width: none;
+}
+
+.my-guest-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  min-width: 0;
+}
+
+@media (min-width: 720px) {
+  .my-guest-grid {
+    grid-template-columns: 1.2fr 1.2fr 1fr;
+  }
+
+  .my-guest-grid > :nth-child(4) {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+
+  .my-guest-grid > :nth-child(5) {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 1100px) {
+  .my-guest-grid {
+    grid-template-columns: 1.3fr 1.3fr 1fr 0.9fr 1.4fr;
+    align-items: start;
+  }
+
+  .my-guest-grid > :nth-child(4),
+  .my-guest-grid > :nth-child(5) {
+    grid-column: auto;
+  }
+
+  .my-guest-grid > :nth-child(4) {
+    text-align: right;
+  }
 }
 
 .reservation-row {

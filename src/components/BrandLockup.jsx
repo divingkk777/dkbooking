@@ -15,12 +15,29 @@ export const BRAND_ASSETS = {
   whatsappNumber: '639989171548',
 };
 
-export function whatsappHref(lang = 'KO') {
+export function whatsappHref(lang = 'KO', purpose = 'consult') {
   const isEN = String(lang || '').toUpperCase() === 'EN';
-  const text = isEN
-    ? 'Hello Angelic, I have a question about my IDA x DOUBLE K freediving booking.'
-    : '안녕하세요 Angelic님, IDA x DOUBLE K 프리다이빙 예약 문의드립니다.';
-  return `https://wa.me/${BRAND_ASSETS.whatsappNumber}?text=${encodeURIComponent(text)}`;
+  let text;
+  if (purpose === 'delete') {
+    text = isEN
+      ? 'Hello Angelic, I need help deleting / cancelling my IDA x DOUBLE K booking.'
+      : '안녕하세요 Angelic님, IDA x DOUBLE K 예약 삭제/취소 문의드립니다.';
+  } else {
+    text = isEN
+      ? 'Hello Angelic, I have a question about my IDA x DOUBLE K freediving booking.'
+      : '안녕하세요 Angelic님, IDA x DOUBLE K 프리다이빙 예약 문의드립니다.';
+  }
+  // api.whatsapp.com is more reliable on desktop browsers than wa.me alone
+  return `https://api.whatsapp.com/send?phone=${BRAND_ASSETS.whatsappNumber}&text=${encodeURIComponent(text)}`;
+}
+
+export function openWhatsApp(lang = 'KO', purpose = 'consult') {
+  const href = whatsappHref(lang, purpose);
+  const win = window.open(href, '_blank', 'noopener,noreferrer');
+  if (!win) {
+    // Popup blocked — navigate in same tab
+    window.location.href = href;
+  }
 }
 
 export function openKakaoTalk() {

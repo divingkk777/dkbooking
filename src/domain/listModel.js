@@ -61,6 +61,8 @@ export function flattenGuestRows(reservations, { today } = {}) {
           repName: res.repName || '',
           bookingInstructor: res.bookingInstructor || '',
           paymentStatus: res.paymentStatus || '대기',
+          guestPaymentClaimed: !!res.guestPaymentClaimed,
+          guestPaymentClaimedAt: res.guestPaymentClaimedAt || '',
           voucherStatus: res.voucherStatus || '미전달',
           assignedRoomNumbers: res.assignedRoomNumbers || '',
           hotelPaymentStatus: res.hotelPaymentStatus || '미정산',
@@ -90,22 +92,25 @@ export function flattenGuestRows(reservations, { today } = {}) {
 }
 
 export function isPaidStatus(paymentStatus, accounts = []) {
+  if (!paymentStatus || paymentStatus === '대기') return false;
+  // Any selected account name counts as paid — including renamed/legacy labels
+  // so renaming an account in settings does not flip old rows back to unpaid.
   const paidNames = new Set([
     'IDA bank',
     'IDA Wise',
     'IDA 현장',
     'CASABLUE',
     'OTHER',
-    // legacy labels still count as paid
     'IDA',
     'CEBU',
     '카카오',
     'IDA BA',
     'IDA CEBU',
-    ...accounts.filter((a) => a.isActive !== false).map((a) => a.name),
+    ...accounts.map((a) => a?.name).filter(Boolean),
   ]);
-  if (!paymentStatus || paymentStatus === '대기') return false;
-  return paidNames.has(paymentStatus);
+  if (paidNames.has(paymentStatus)) return true;
+  // Fallback: paymentStatus is set to an account name when confirming payment
+  return String(paymentStatus).trim().length > 0;
 }
 
 export function unitLabel(assignedLine, lang = 'KO') {

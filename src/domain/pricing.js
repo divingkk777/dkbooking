@@ -4,6 +4,7 @@ import {
   resolveOptionPrices,
   resolveOptionsCatalog,
   resolvePromoCode,
+  resolvePromoCodesConfig,
 } from './defaults';
 
 export function formatMoney(value) {
@@ -337,8 +338,10 @@ function applyEscortTrainingPromo(training, promo, guest) {
 /** Settings + optional escort code for processRoomsData 6th arg. */
 export function buildPricingExtras(settings, escortCode) {
   return {
-    promoCodes: settings?.promoCodesConfig || [],
-    escortCode: escortCode || '',
+    promoCodes: resolvePromoCodesConfig(settings?.promoCodesConfig),
+    escortCode: String(escortCode || '')
+      .trim()
+      .toUpperCase(),
   };
 }
 

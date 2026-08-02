@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   emptyTrash,
   moveToTrash,
+  purgeExpiredTrash,
   restoreFromTrash,
   subscribeReservations,
   subscribeTrashed,
@@ -98,6 +99,13 @@ export default function AdminApp({ settings }) {
       u3();
     };
   }, [role, toast]);
+
+  useEffect(() => {
+    if (!role) return;
+    purgeExpiredTrash(30).catch(() => {
+      /* best-effort auto-purge */
+    });
+  }, [role]);
 
   const login = () => {
     const id1 = settings.adminId1;

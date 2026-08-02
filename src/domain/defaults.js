@@ -222,6 +222,15 @@ export const DIVER_LEVELS = ['LEVEL_1', 'LEVEL_2', 'LEVEL_3', 'LEVEL_4', 'INSTRU
 /** Freediving disciplines selectable in booking step 2 */
 export const DISCIPLINES = ['CWT', 'CWTB', 'FIM', 'CNF'];
 
+/** Booker grade asked on booking step 1 */
+export const BOOKER_GRADES = [
+  { id: 'NON_DIVER', ko: '비다이버(처음)', en: 'Non-diver (first time)' },
+  { id: 'LEVEL_DIVER', ko: '레벨 다이버(1-4)', en: 'Level diver (1–4)' },
+  { id: 'INSTRUCTOR', ko: '강사', en: 'Instructor' },
+  { id: 'TRAINER', ko: '트레이너', en: 'Trainer' },
+  { id: 'OTHER', ko: '기타', en: 'Other' },
+];
+
 /** 24h clock, 1-hour steps only (HH:00) */
 export const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => {
   const hh = String(h).padStart(2, '0');
@@ -256,8 +265,8 @@ export function createEmptyGuest() {
     level: 'LEVEL_1',
     startDate: '',
     endDate: '',
-    checkInTime: '14:00',
-    checkOutTime: '11:00',
+    checkInTime: '',
+    checkOutTime: '',
     dawnCheckIn: false,
     lateCheckOut: false,
     restDays: 0,
@@ -328,6 +337,14 @@ export function copyGuestDetailsFrom(source, { name = '' } = {}) {
 export const STORAGE_KEYS = {
   lastBookingInstructor: 'dk_last_booking_instructor',
   lastAdminUsername: 'dk_last_admin_username',
+  /** My page: remember login email + PIN (same browser/origin). */
+  myRemember: 'dk_my_remember',
+  myEmail: 'dk_my_email',
+  myPin: 'dk_my_pin',
+  /** Guest email-gate on home (name + email). */
+  guestGateRemember: 'dk_guest_gate_remember',
+  guestGateEmail: 'dk_guest_gate_email',
+  guestGateName: 'dk_guest_gate_name',
 };
 
 export const DEFAULT_GROUP_PIN = '1111';
@@ -378,24 +395,31 @@ export function resolvePromoCodesConfig(raw) {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter((p) => p && String(p.code || '').trim())
-    .map((p) => ({
-      id: p.id || `PROMO_${Date.now()}`,
-      code: String(p.code || '')
-        .trim()
-        .toUpperCase(),
-      nameKO: p.nameKO || p.name || p.code || '',
-      nameEN: p.nameEN || p.nameKO || p.name || p.code || '',
-      isActive: p.isActive !== false,
-      discountType: p.discountType === 'amount' ? 'amount' : 'percent',
-      discountValue: Number(p.discountValue) || 0,
-      discountUSD: Number(p.discountUSD) || 0,
-      trainingScope:
-        p.trainingScope === 'ALL' || !p.trainingScope
-          ? 'ALL'
-          : Array.isArray(p.trainingScope)
-            ? p.trainingScope
-            : 'ALL',
-    }));
+    .map((p, i) => {
+      let trainingScope = 'ALL';
+      if (p.trainingScope === 'ALL' || p.trainingScope == null) {
+        trainingScope = 'ALL';
+      } else if (Array.isArray(p.trainingScope)) {
+        trainingScope = p.trainingScope.map(String).filter(Boolean);
+        if (!trainingScope.length) trainingScope = 'ALL';
+      } else if (p.trainingScope === 'SELECTED' && Array.isArray(p.scopeIds)) {
+        trainingScope = p.scopeIds.map(String).filter(Boolean);
+        if (!trainingScope.length) trainingScope = 'ALL';
+      }
+      return {
+        id: p.id || `PROMO_${i}_${String(p.code || '').trim().toUpperCase()}`,
+        code: String(p.code || '')
+          .trim()
+          .toUpperCase(),
+        nameKO: p.nameKO || p.name || p.code || '',
+        nameEN: p.nameEN || p.nameKO || p.name || p.code || '',
+        isActive: p.isActive !== false,
+        discountType: p.discountType === 'amount' ? 'amount' : 'percent',
+        discountValue: Number(p.discountValue) || 0,
+        discountUSD: Number(p.discountUSD) || 0,
+        trainingScope,
+      };
+    });
 }
 
 export function resolvePromoCode(promoCodes, code) {

@@ -27,7 +27,7 @@ function CategoryBox({ title, color, open, onToggle, children }) {
           fontSize: 13,
           padding: '8px 12px',
           border: 'none',
-          cursor: pointer,
+          cursor: 'pointer',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',

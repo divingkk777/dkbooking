@@ -37,6 +37,100 @@ export function subscribeTrashed(onData, onError) {
   );
 }
 
+function matchesGuestLogin(res, email, pin) {
+  const e = String(email || '')
+    .trim()
+    .toLowerCase();
+  const p = String(pin || '').trim();
+  if (!e || !/^\d{4}$/.test(p)) return false;
+  const login = String(res.bookingInstructor || res.repEmail || '')
+    .trim()
+    .toLowerCase();
+  return login === e && String(res.groupPin || '') === p;
+}
+
+function sortGuestReservations(list) {
+  return [...list].sort((a, b) =>
+    String(b.submittedAt || '').localeCompare(String(a.submittedAt || '')),
+  );
+}
+
+/** Guest My lookup: email (= bookingInstructor / repEmail) + 4-digit PIN */
+export async function findReservationsByGuestLogin(email, pin) {
+  const snap = await getDocs(collection(db, COLLECTIONS.reservations));
+  return sortGuestReservations(
+    snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((r) => matchesGuestLogin(r, email, pin)),
+  );
+}
+
+/** One-shot trash lookup for My login (same email + PIN). */
+export async function findTrashedByGuestLogin(email, pin) {
+  const snap = await getDocs(collection(db, COLLECTIONS.trashed));
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((r) => matchesGuestLogin(r, email, pin))
+    .sort((a, b) =>
+      String(b.trashedAt || '').localeCompare(String(a.trashedAt || '')),
+    );
+}
+
+/**
+ * Live sync for My page: when admin moves a booking to trash (deleted from
+ * reservations), it disappears here automatically.
+ */
+export function subscribeReservationsByGuestLogin(email, pin, onData, onError) {
+  const e = String(email || '')
+    .trim()
+    .toLowerCase();
+  const p = String(pin || '').trim();
+  if (!e || !/^\d{4}$/.test(p)) {
+    onData([]);
+    return () => {};
+  }
+  return onSnapshot(
+    collection(db, COLLECTIONS.reservations),
+    (snap) => {
+      onData(
+        sortGuestReservations(
+          snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((r) => matchesGuestLogin(r, e, p)),
+        ),
+      );
+    },
+    onError,
+  );
+}
+
+/** Guest My trash: deleted bookings for this email + PIN (30-day retention). */
+export function subscribeTrashedByGuestLogin(email, pin, onData, onError) {
+  const e = String(email || '')
+    .trim()
+    .toLowerCase();
+  const p = String(pin || '').trim();
+  if (!e || !/^\d{4}$/.test(p)) {
+    onData([]);
+    return () => {};
+  }
+  const q = query(
+    collection(db, COLLECTIONS.trashed),
+    orderBy('trashedAt', 'desc'),
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      onData(
+        snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((r) => matchesGuestLogin(r, e, p)),
+      );
+    },
+    onError,
+  );
+}
+
 export async function createReservation(payload) {
   return addDoc(collection(db, COLLECTIONS.reservations), payload);
 }
@@ -96,4 +190,24 @@ export async function emptyTrash() {
   snap.docs.forEach((d) => batch.delete(d.ref));
   await batch.commit();
   return snap.size;
+}
+
+/** Permanently delete trash items older than `days` (default 30). */
+export async function purgeExpiredTrash(days = 30) {
+  const snap = await getDocs(collection(db, COLLECTIONS.trashed));
+  if (snap.empty) return 0;
+  const cutoff = Date.now() - Math.max(1, days) * 86400000;
+  const expired = snap.docs.filter((d) => {
+    const at = new Date(d.data()?.trashedAt || 0).getTime();
+    return !Number.isNaN(at) && at < cutoff;
+  });
+  if (!expired.length) return 0;
+  // Firestore batch max 500
+  for (let i = 0; i < expired.length; i += 450) {
+    const chunk = expired.slice(i, i + 450);
+    const batch = writeBatch(db);
+    chunk.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+  }
+  return expired.length;
 }

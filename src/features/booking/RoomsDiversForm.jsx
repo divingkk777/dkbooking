@@ -67,17 +67,31 @@ function Field({ label, required, error, onActivate, children }) {
   );
 }
 
-function HourSelect({ value, fallback, onChange, error, onActivate }) {
-  const normalized = normalizeHourTime(value, fallback);
+function HourSelect({
+  value,
+  fallback,
+  onChange,
+  error,
+  onActivate,
+  allowEmpty = false,
+  emptyLabel = 'Select',
+}) {
+  const hasValue = !!(value && String(value).trim());
+  const display = hasValue
+    ? normalizeHourTime(value, fallback)
+    : allowEmpty
+      ? ''
+      : normalizeHourTime(value, fallback);
   return (
     <select
       className={`input-field${error ? ' input-field-error' : ''}`}
-      value={normalized}
+      value={display}
       onChange={onChange}
       onFocus={() => onActivate?.()}
       onClick={() => onActivate?.()}
       data-field-error={error ? '1' : undefined}
     >
+      {allowEmpty ? <option value="">{emptyLabel}</option> : null}
       {HOUR_OPTIONS.map((h) => (
         <option key={h} value={h}>
           {h}
@@ -95,6 +109,8 @@ export default function RoomsDiversForm({
   t,
   lang = 'KO',
   repName = '',
+  roomCount = 1,
+  setRoomCount,
   roomsData,
   setRoomsData,
   roomTypes,
@@ -299,13 +315,17 @@ export default function RoomsDiversForm({
           key === 'pickupTime' ||
           key === 'dropoffTime'
         ) {
-          const fallback =
-            key === 'checkOutTime'
-              ? '11:00'
-              : key === 'checkInTime'
-                ? '14:00'
-                : '00:00';
-          nextVal = normalizeHourTime(value, fallback);
+          if (value === '' || value == null) {
+            nextVal = '';
+          } else {
+            const fallback =
+              key === 'checkOutTime'
+                ? '11:00'
+                : key === 'checkInTime'
+                  ? '14:00'
+                  : '00:00';
+            nextVal = normalizeHourTime(value, fallback);
+          }
         }
         const nextGuest = { ...guests[guestIdx], [key]: nextVal };
         if (key === 'videoCount') {
@@ -320,31 +340,39 @@ export default function RoomsDiversForm({
 
         // Live parity: early 00:00–11:00, late 13:00+
         if (key === 'checkInTime') {
-          const hour = Number(String(nextVal).split(':')[0] || 14);
-          const shouldEarly = hour >= 0 && hour <= 11;
-          if (shouldEarly) {
-            if (!prevGuest?.dawnCheckIn) {
-              nextGuest.dawnCheckIn = true;
-              autoAlert = { kind: 'early', time: nextVal, room };
-            } else {
-              nextGuest.dawnCheckIn = true;
-            }
-          } else {
+          if (!nextVal) {
             nextGuest.dawnCheckIn = false;
+          } else {
+            const hour = Number(String(nextVal).split(':')[0] || 14);
+            const shouldEarly = hour >= 0 && hour <= 11;
+            if (shouldEarly) {
+              if (!prevGuest?.dawnCheckIn) {
+                nextGuest.dawnCheckIn = true;
+                autoAlert = { kind: 'early', time: nextVal, room };
+              } else {
+                nextGuest.dawnCheckIn = true;
+              }
+            } else {
+              nextGuest.dawnCheckIn = false;
+            }
           }
         }
         if (key === 'checkOutTime') {
-          const hour = Number(String(nextVal).split(':')[0] || 11);
-          const shouldLate = hour >= 13;
-          if (shouldLate) {
-            if (!prevGuest?.lateCheckOut) {
-              nextGuest.lateCheckOut = true;
-              autoAlert = { kind: 'late', time: nextVal, room };
-            } else {
-              nextGuest.lateCheckOut = true;
-            }
-          } else {
+          if (!nextVal) {
             nextGuest.lateCheckOut = false;
+          } else {
+            const hour = Number(String(nextVal).split(':')[0] || 11);
+            const shouldLate = hour >= 13;
+            if (shouldLate) {
+              if (!prevGuest?.lateCheckOut) {
+                nextGuest.lateCheckOut = true;
+                autoAlert = { kind: 'late', time: nextVal, room };
+              } else {
+                nextGuest.lateCheckOut = true;
+              }
+            } else {
+              nextGuest.lateCheckOut = false;
+            }
           }
         }
 
@@ -454,6 +482,34 @@ export default function RoomsDiversForm({
 
   return (
     <div>
+      <div className="card" style={{ marginBottom: 12 }}>
+        <h3 style={{ marginTop: 0 }}>
+          2. {t('객실 · 다이버 정보', 'Rooms & Divers')}
+        </h3>
+        <div style={{ maxWidth: 280 }}>
+          <Field label={t('객실 수', 'Room Count')} required>
+            <select
+              className="input-field"
+              value={roomCount}
+              onChange={(e) => setRoomCount?.(Number(e.target.value) || 1)}
+            >
+              {[1, 2, 3, 4, 5, 6].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                  {t('개', '')}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <p style={{ margin: '8px 0 0', fontSize: 12, color: '#8b95a1' }}>
+          {t(
+            '객실 수를 선택하면 아래 객실 카드가 맞춰집니다.',
+            'Changing room count updates the room cards below.',
+          )}
+        </p>
+      </div>
+
       {roomsData.map((room, roomIdx) => {
         const processedRoom = processed?.processedRooms?.[roomIdx];
         const maxGuests = maxGuestsForRoomType(room.roomType, roomTypes);
@@ -819,12 +875,15 @@ export default function RoomsDiversForm({
                       <div className="pair-row">
                         <Field
                           label={t('체크인 시간', 'Check-in')}
+                          required
                           error={guestErr(roomIdx, guestIdx, 'checkInTime')}
                           onActivate={() => touch(guestKey(roomIdx, guestIdx, 'checkInTime'))}
                         >
                           <HourSelect
                             value={guest.checkInTime}
                             fallback="14:00"
+                            allowEmpty
+                            emptyLabel={t('선택', 'Select')}
                             onChange={(e) =>
                               updateGuest(
                                 roomIdx,
@@ -837,12 +896,15 @@ export default function RoomsDiversForm({
                         </Field>
                         <Field
                           label={t('체크아웃 시간', 'Check-out')}
+                          required
                           error={guestErr(roomIdx, guestIdx, 'checkOutTime')}
                           onActivate={() => touch(guestKey(roomIdx, guestIdx, 'checkOutTime'))}
                         >
                           <HourSelect
                             value={guest.checkOutTime}
                             fallback="11:00"
+                            allowEmpty
+                            emptyLabel={t('선택', 'Select')}
                             onChange={(e) =>
                               updateGuest(
                                 roomIdx,

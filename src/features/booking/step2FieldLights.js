@@ -50,9 +50,8 @@ export function buildStep2FieldLights({
       requiredLit(gk('startDate'), !!g.startDate);
       requiredLit(gk('endDate'), !!g.endDate);
 
-      // Times always display a fallback — treat as having a value; click clears
-      requiredLit(gk('checkInTime'), true);
-      requiredLit(gk('checkOutTime'), true);
+      requiredLit(gk('checkInTime'), !!String(g.checkInTime || '').trim());
+      requiredLit(gk('checkOutTime'), !!String(g.checkOutTime || '').trim());
 
       optionalLit(gk('dawnCheckIn'));
       optionalLit(gk('lateCheckOut'));

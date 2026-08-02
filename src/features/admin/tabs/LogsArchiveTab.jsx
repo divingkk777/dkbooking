@@ -56,6 +56,12 @@ export default function LogsArchiveTab({
             {t('휴지통 비우기', 'Empty Trash')}
           </button>
         </div>
+        <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--muted)' }}>
+          {t(
+            '삭제된 예약은 휴지통에 보관되며, 보관 30일 후 자동 폐기됩니다.',
+            'Deleted bookings stay in trash and are auto-purged after 30 days.',
+          )}
+        </p>
 
         {trashItems.length === 0 && (
           <p style={{ color: 'var(--muted)' }}>

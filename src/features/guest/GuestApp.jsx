@@ -2,20 +2,23 @@ import emailjs from '@emailjs/browser';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  BOOKER_GRADES,
   createEmptyRoom,
   DEFAULT_GROUP_PIN,
-  HOTEL_INFO,
   STORAGE_KEYS,
 } from '../../domain/defaults';
 import {
   buildPricingExtras,
-  formatPricePair,
   processRoomsData,
 } from '../../domain/pricing';
 import { addAdminLog } from '../../data/logsRepo';
 import { createReservation } from '../../data/reservationsRepo';
 import { createTranslator } from '../../i18n/t';
 import BrandLockup from '../../components/BrandLockup';
+import {
+  buildProfessionalReservationEmail,
+  toEmailJsParams,
+} from '../../lib/emailTemplates';
 import RollingBanner from '../../components/RollingBanner';
 import {
   clearGuestSession,
@@ -30,6 +33,7 @@ import {
 } from '../../lib/guestAuth';
 import RoomsDiversForm from '../booking/RoomsDiversForm';
 import GuestBillingSummary from './GuestBillingSummary';
+import GuestTopBar from './GuestTopBar';
 import StepIndicator from '../../ui/StepIndicator';
 import StickyActionBar from '../../ui/StickyActionBar';
 import { useToast } from '../../ui/ToastContext';
@@ -42,9 +46,20 @@ export default function GuestApp({ settings }) {
   const t = useMemo(() => createTranslator(lang), [lang]);
   const [session, setSession] = useState(loadGuestSession);
   const [authBusy, setAuthBusy] = useState(false);
-  const [showEmailGate, setShowEmailGate] = useState(false);
-  const [gateEmail, setGateEmail] = useState('');
-  const [gateName, setGateName] = useState('');
+  const [showEmailGate, setShowEmailGate] = useState(() => {
+    return localStorage.getItem(STORAGE_KEYS.guestGateRemember) === '1';
+  });
+  const [gateRemember, setGateRemember] = useState(
+    () => localStorage.getItem(STORAGE_KEYS.guestGateRemember) === '1',
+  );
+  const [gateEmail, setGateEmail] = useState(() => {
+    if (localStorage.getItem(STORAGE_KEYS.guestGateRemember) !== '1') return '';
+    return localStorage.getItem(STORAGE_KEYS.guestGateEmail) || '';
+  });
+  const [gateName, setGateName] = useState(() => {
+    if (localStorage.getItem(STORAGE_KEYS.guestGateRemember) !== '1') return '';
+    return localStorage.getItem(STORAGE_KEYS.guestGateName) || '';
+  });
   const [step, setStep] = useState(1);
   const [maxReached, setMaxReached] = useState(1);
   const [repName, setRepName] = useState(session.repName || '');
@@ -55,6 +70,7 @@ export default function GuestApp({ settings }) {
       '',
   );
   const [groupPin, setGroupPin] = useState(DEFAULT_GROUP_PIN);
+  const [bookerGrade, setBookerGrade] = useState('');
   /** Login ID = voucher email (same value). */
   const bookingInstructor = repEmail.trim();
   const [roomCount, setRoomCount] = useState(1);
@@ -192,6 +208,15 @@ export default function GuestApp({ settings }) {
       toast.warn(t('이름을 입력하세요.', 'Enter your name.'));
       return;
     }
+    if (gateRemember) {
+      localStorage.setItem(STORAGE_KEYS.guestGateRemember, '1');
+      localStorage.setItem(STORAGE_KEYS.guestGateEmail, gateEmail.trim());
+      localStorage.setItem(STORAGE_KEYS.guestGateName, gateName.trim());
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.guestGateRemember);
+      localStorage.removeItem(STORAGE_KEYS.guestGateEmail);
+      localStorage.removeItem(STORAGE_KEYS.guestGateName);
+    }
     enterBooking(
       continueAsGuest({ email: gateEmail.trim(), name: gateName.trim() }),
     );
@@ -236,6 +261,12 @@ export default function GuestApp({ settings }) {
     }
     if (!/^\d{4}$/.test(groupPin)) {
       toast.warn(t('4자리 PIN을 입력하세요.', 'Enter 4-digit PIN.'));
+      return false;
+    }
+    if (!bookerGrade) {
+      toast.warn(
+        t('예약자 등급을 선택하세요.', 'Select booker grade.'),
+      );
       return false;
     }
     if (!consents.privacy) {
@@ -291,6 +322,14 @@ export default function GuestApp({ settings }) {
         }
         if (!g.endDate) {
           mark(gk('endDate'));
+          basicMissing = true;
+        }
+        if (!String(g.checkInTime || '').trim()) {
+          mark(gk('checkInTime'));
+          basicMissing = true;
+        }
+        if (!String(g.checkOutTime || '').trim()) {
+          mark(gk('checkOutTime'));
           basicMissing = true;
         }
         if (basicMissing) {
@@ -455,6 +494,7 @@ export default function GuestApp({ settings }) {
         repName: repName.trim().toUpperCase(),
         repEmail: repEmail.trim(),
         groupPin,
+        bookerGrade,
         roomCount,
         roomsData: processed.processedRooms,
         grandTotalKRW: processed.grandTotalKRW,
@@ -480,26 +520,19 @@ export default function GuestApp({ settings }) {
         message: `[신규 예약] ${payload.repName} 그룹 예약 접수 (예약자: ${payload.bookingInstructor})`,
       });
 
-      const body = [
-        `🔐 [${t('예약 로그인 계정 정보', 'Login Credentials')}]`,
-        `- ${t('예약자 ID / 성명', 'Holder ID / Name')}: ${payload.bookingInstructor}`,
-        `- ${t('조회용 비밀번호', 'PIN')}: ${groupPin}`,
-        '',
-        `🏨 [${t('호텔 안내', 'Hotel Info')}]`,
-        `- ${t('주소', 'Address')}: ${HOTEL_INFO.name}, ${HOTEL_INFO.address}`,
-        '',
-        `${t('합계', 'Total')}: ${formatPricePair(lang, payload.grandTotalKRW, payload.grandTotalUSD)}`,
-      ].join('\n');
-
       try {
+        const built = buildProfessionalReservationEmail({
+          kind: 'booking',
+          t,
+          lang,
+          res: payload,
+          settings,
+          groupPin,
+        });
         await emailjs.send(
           import.meta.env.VITE_EMAILJS_SERVICE_ID,
           import.meta.env.VITE_EMAILJS_TEMPLATE_ID,
-          {
-            to_email: payload.repEmail,
-            to_name: payload.repName,
-            message: body,
-          },
+          toEmailJsParams(built),
         );
       } catch {
         /* email is best-effort */
@@ -529,22 +562,7 @@ export default function GuestApp({ settings }) {
     return (
       <div className="app-shell">
         <RollingBanner ads={settings.adsConfig} />
-        <div className="lang-switch">
-          <button
-            type="button"
-            className={lang === 'KO' ? 'active btn-ghost' : 'btn-ghost'}
-            onClick={() => setLang('KO')}
-          >
-            KOR
-          </button>
-          <button
-            type="button"
-            className={lang === 'EN' ? 'active btn-ghost' : 'btn-ghost'}
-            onClick={() => setLang('EN')}
-          >
-            ENG
-          </button>
-        </div>
+        <GuestTopBar t={t} lang={lang} setLang={setLang} />
         <div className="card login-card">
           <h1>IDA x DOUBLE K FREEDIVING</h1>
           <p>
@@ -602,6 +620,36 @@ export default function GuestApp({ settings }) {
                 onChange={(e) => setGateEmail(e.target.value)}
                 placeholder="you@email.com"
               />
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginTop: 10,
+                  fontSize: 13,
+                  color: '#4e5968',
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={gateRemember}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setGateRemember(on);
+                    if (!on) {
+                      localStorage.removeItem(STORAGE_KEYS.guestGateRemember);
+                      localStorage.removeItem(STORAGE_KEYS.guestGateEmail);
+                      localStorage.removeItem(STORAGE_KEYS.guestGateName);
+                    }
+                  }}
+                />
+                {t(
+                  '아이디 기억 (이 브라우저)',
+                  'Remember email (this browser)',
+                )}
+              </label>
               <button
                 type="button"
                 className="btn-primary"
@@ -629,45 +677,13 @@ export default function GuestApp({ settings }) {
   return (
     <div className="app-shell">
       <RollingBanner ads={settings.adsConfig} />
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 12,
-        }}
-      >
-        <strong style={{ fontSize: 13, color: '#4e5968' }}>
-          {t(
-            '당신의 다이빙 여정을 계획 해보세요',
-            'Plan your diving journey',
-          )}
-        </strong>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <div className="lang-switch">
-            <button
-              type="button"
-              className={lang === 'KO' ? 'active btn-ghost' : 'btn-ghost'}
-              onClick={() => setLang('KO')}
-            >
-              KOR
-            </button>
-            <button
-              type="button"
-              className={lang === 'EN' ? 'active btn-ghost' : 'btn-ghost'}
-              onClick={() => setLang('EN')}
-            >
-              ENG
-            </button>
-          </div>
-          <Link to="/admin" className="btn-secondary">
-            {t('관리자', 'Admin')}
-          </Link>
-          <button type="button" className="btn-ghost" onClick={logout}>
-            {t('로그아웃', 'Logout')}
-          </button>
-        </div>
-      </div>
+      <GuestTopBar
+        t={t}
+        lang={lang}
+        setLang={setLang}
+        showLogout
+        onLogout={logout}
+      />
 
       <StepIndicator
         step={step}
@@ -735,15 +751,19 @@ export default function GuestApp({ settings }) {
               />
             </div>
             <div>
-              <label className="label-text">{t('객실 수', 'Room Count')}</label>
+              <label className="label-text">
+                {t('예약자 등급', 'Booker grade')}
+                <span className="required-star"> *</span>
+              </label>
               <select
                 className="input-field"
-                value={roomCount}
-                onChange={(e) => setRoomCount(Number(e.target.value))}
+                value={bookerGrade}
+                onChange={(e) => setBookerGrade(e.target.value)}
               >
-                {[1, 2, 3, 4, 5, 6].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
+                <option value="">{t('선택', 'Select')}</option>
+                {BOOKER_GRADES.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {t(g.ko, g.en)}
                   </option>
                 ))}
               </select>
@@ -824,6 +844,8 @@ export default function GuestApp({ settings }) {
           t={t}
           lang={lang}
           repName={repName}
+          roomCount={roomCount}
+          setRoomCount={setRoomCount}
           roomsData={roomsData}
           setRoomsData={setRoomsData}
           roomTypes={settings.roomTypesConfig}
@@ -840,7 +862,11 @@ export default function GuestApp({ settings }) {
       {step === 3 && (
         <div className="card">
           <h3 style={{ marginTop: 0 }}>
-            3. {t('취소 규정 및 서명', 'Policy & Signature')}
+            3.{' '}
+            {t(
+              '약관 동의서 · 취소 규정 및 서명',
+              'Agreement · Policy & Signature',
+            )}
           </h3>
           <div className="sub-card" style={{ fontSize: 13, lineHeight: 1.55 }}>
             <strong>
@@ -947,7 +973,10 @@ export default function GuestApp({ settings }) {
           step === 1
             ? t('다음 단계로 이동 (객실/다이버 입력) →', 'Next Step →')
             : step === 2
-              ? t('다음 단계로 이동 (약관 동의 및 전자 서명) →', 'Next Step →')
+              ? t(
+                  '다음 단계로 이동 (약관 동의서로) →',
+                  'Next → Agreement form',
+                )
               : t('예약 제출', 'Submit Booking')
         }
         onRight={() => {
