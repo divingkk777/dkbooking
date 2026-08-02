@@ -4,6 +4,7 @@ import {
   createEmptyGuest,
   DISCIPLINES,
   HOUR_OPTIONS,
+  maxGuestsForRoomType,
   normalizeHourTime,
   OPTION_PRICES_KRW,
   OPTION_PRICES_USD,
@@ -183,23 +184,42 @@ export default function RoomsDiversForm({
     );
   };
 
-  const setGuestCount = (roomIdx, count) => {
-    const n = Math.max(1, Math.min(4, Number(count) || 1));
+  const setGuestCount = (roomIdx, count, roomTypeOverride) => {
     setRoomsData((prev) =>
       prev.map((room, i) => {
         if (i !== roomIdx) return room;
+        const roomType =
+          roomTypeOverride !== undefined ? roomTypeOverride : room.roomType;
+        const max = maxGuestsForRoomType(roomType, roomTypes);
+        const n = Math.max(1, Math.min(max, Number(count) || 1));
         const guests = [...(room.guests || [])];
         while (guests.length < n) guests.push(createEmptyGuest());
         while (guests.length > n) guests.pop();
-        return { ...room, guestCount: n, guests };
+        return { ...room, roomType, guestCount: n, guests };
       }),
     );
+  };
+
+  const changeRoomType = (roomIdx, nextType) => {
+    const max = maxGuestsForRoomType(nextType, roomTypes);
+    const current = roomsData[roomIdx]?.guests?.length || 1;
+    if (current > max) {
+      toast.warn(
+        t(
+          `이 객실은 최대 ${max}명까지 가능합니다.`,
+          `This room allows up to ${max} guests.`,
+        ),
+      );
+    }
+    setGuestCount(roomIdx, Math.min(current, max), nextType);
   };
 
   return (
     <div>
       {roomsData.map((room, roomIdx) => {
         const processedRoom = processed?.processedRooms?.[roomIdx];
+        const maxGuests = maxGuestsForRoomType(room.roomType, roomTypes);
+        const guestOptions = Array.from({ length: maxGuests }, (_, i) => i + 1);
         return (
           <div key={room.id || roomIdx} className="card">
             <h3 style={{ marginTop: 0 }}>
@@ -210,7 +230,7 @@ export default function RoomsDiversForm({
                 <select
                   className="input-field"
                   value={room.roomType || ''}
-                  onChange={(e) => updateRoom(roomIdx, { roomType: e.target.value })}
+                  onChange={(e) => changeRoomType(roomIdx, e.target.value)}
                 >
                   <option value="">{t('선택', 'Select')}</option>
                   <option value="NONE">
@@ -226,13 +246,19 @@ export default function RoomsDiversForm({
                     ))}
                 </select>
               </Field>
-              <Field label={t('다이버 수', 'Diver Count')} required>
+              <Field
+                label={`${t('다이버 수', 'Diver Count')} (max ${maxGuests})`}
+                required
+              >
                 <select
                   className="input-field"
-                  value={room.guestCount || room.guests?.length || 1}
+                  value={Math.min(
+                    room.guestCount || room.guests?.length || 1,
+                    maxGuests,
+                  )}
                   onChange={(e) => setGuestCount(roomIdx, e.target.value)}
                 >
-                  {[1, 2, 3, 4].map((n) => (
+                  {guestOptions.map((n) => (
                     <option key={n} value={n}>
                       {n}
                     </option>

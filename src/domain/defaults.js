@@ -6,6 +6,26 @@ export const DEFAULT_ROOM_TYPES = [
   { id: 'DELUXE_TWIN', nameKO: '디럭스 트윈', nameEN: 'Deluxe Twin', priceKRW: 90000, priceUSD: 62, isActive: true },
 ];
 
+/** King+Single → 3, other rooms → 2, diving-only (NONE) → 4 */
+export function maxGuestsForRoomType(roomType, roomTypes = []) {
+  if (!roomType || roomType === 'NONE') return 4;
+  const cfg = (roomTypes || []).find((r) => r.id === roomType);
+  const blob = [roomType, cfg?.id, cfg?.nameKO, cfg?.nameEN, cfg?.name]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .replace(/\s+/g, '');
+  const isKingSingle =
+    blob.includes('킹+싱글') ||
+    blob.includes('킹싱글') ||
+    blob.includes('king+single') ||
+    blob.includes('kingsingle') ||
+    /king.?single/.test(blob) ||
+    roomType === 'KING_SINGLE' ||
+    roomType === 'KING+SINGLE';
+  return isKingSingle ? 3 : 2;
+}
+
 export const DEFAULT_TRAINING_TYPES = [
   { id: 'MAX_60', name: 'MAX 60', priceKRW: 80000, priceUSD: 60, isActive: true, isSelfTraining: false },
   { id: 'MAX_90', name: 'MAX 90', priceKRW: 120000, priceUSD: 80, isActive: true, isSelfTraining: false },
