@@ -20,9 +20,8 @@ function isGuestCancelled(res, guest) {
   return false;
 }
 
-/** Lodging nights only (never from training). Prefer stored billedNights. */
+/** Lodging nights only — always from dates (+ early/late), never training. */
 function guestBilledNights(guest) {
-  if (Number(guest?.billedNights) > 0) return Number(guest.billedNights);
   return computeBilledNights(guest);
 }
 

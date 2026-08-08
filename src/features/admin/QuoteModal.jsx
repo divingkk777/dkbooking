@@ -3,10 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   EMPTY_TRAINING_DISCOUNTS,
 } from '../../domain/defaults';
-import {
-  actualTrainingCount,
-  requestedTrainingCount,
-} from '../../domain/listModel';
+import { requestedTrainingCount } from '../../domain/listModel';
 import {
   formatMoney,
   formatPricePair,
@@ -121,7 +118,6 @@ export default function QuoteModal({
     .reduce((sum, line) => sum + (Number(line.qty) || 0), 0);
   const trainingCounts = guest.trainingCounts || {};
   const appliedTraining = requestedTrainingCount(guest);
-  const billableTraining = actualTrainingCount(guest);
   const restDays = Number(guest.restDays) || 0;
 
   const applyQuote = async () => {
@@ -238,7 +234,7 @@ export default function QuoteModal({
                     {t('신청', 'Applied')} {appliedTraining}
                     {t('회', 'x')}
                     {restDays > 0
-                      ? ` → ${t('실제', 'Actual')} ${billableTraining}${t('회', 'x')} (${t('불참', 'Absent')} ${restDays}${t('회', 'x')})`
+                      ? ` · ${t('불참', 'Absent')} ${restDays}${t('회', 'x')}`
                       : ''}
                   </span>
                 </div>
@@ -338,8 +334,8 @@ export default function QuoteModal({
                 {pg.billedNights != null
                   ? ` · ${t('숙박', 'Stay')} ${pg.billedNights}${t('박', 'n')}`
                   : ''}
-                {appliedTraining > 0 || billableTraining > 0
-                  ? ` · ${t('트레이닝', 'Training')} ${billableTraining}${t('회', 'x')}`
+                {appliedTraining > 0
+                  ? ` · ${t('트레이닝', 'Training')} ${appliedTraining}${t('회', 'x')}`
                   : ''}
               </div>
 
@@ -357,10 +353,10 @@ export default function QuoteModal({
               <div className="quote-official-line">
                 <span>
                   • {t('트레이닝', 'Training')}
-                  {billableTraining > 0 || appliedTraining > 0
-                    ? ` (${t('실제', 'Actual')} ${billableTraining}${t('회', 'x')}${
+                  {appliedTraining > 0
+                    ? ` (${t('신청', 'Applied')} ${appliedTraining}${t('회', 'x')}${
                         restDays > 0
-                          ? ` · ${t('신청', 'Applied')} ${appliedTraining}${t('회', 'x')}, ${t('불참', 'Absent')} ${restDays}${t('회', 'x')}`
+                          ? ` · ${t('불참', 'Absent')} ${restDays}${t('회', 'x')}`
                           : ''
                       })`
                     : ''}

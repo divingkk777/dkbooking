@@ -206,38 +206,18 @@ function roomShareFallback(roomType, guestCount, billedNights) {
 }
 
 /**
- * Apply Manifest 불참(restDays) to training line qtys.
- * Deducts from the end of the line list (deterministic; independent of nights).
- */
-function applyTrainingAbsences(lines, restDays) {
-  let remaining = Math.max(0, Number(restDays) || 0);
-  if (remaining <= 0 || !lines.length) return lines;
-  const next = lines.map((l) => ({ ...l }));
-  for (let i = next.length - 1; i >= 0 && remaining > 0; i -= 1) {
-    const qty = Number(next[i].qty) || 0;
-    if (qty <= 0) continue;
-    const deduct = Math.min(qty, remaining);
-    const newQty = qty - deduct;
-    next[i].qty = newQty;
-    next[i].amountKRW = newQty * (Number(next[i].unitKRW) || 0);
-    next[i].amountUSD = newQty * (Number(next[i].unitUSD) || 0);
-    remaining -= deduct;
-  }
-  return next.filter((l) => (Number(l.qty) || 0) > 0);
-}
-
-/**
- * Training-only pricing from trainingCounts (+ restDays absences).
+ * Training-only pricing from trainingCounts (신청 횟수).
  * Never uses billedNights / startDate / endDate.
+ * Never deducts restDays — 불참 is operational/manifest only, not quote basis.
  *
  * Persisted field `divingDays` = 신청 합계 (requested sessions) — training-only,
- * NOT lodging nights. Billable qty = 신청 − restDays.
+ * NOT lodging nights. Billable qty = sum(trainingCounts).
  */
 function trainingCostForGuest(guest, trainingTypes) {
   const counts = guest.trainingCounts || {};
   const discounts = guest.trainingDiscounts || {};
   let requestedSessions = 0;
-  const rawLines = [];
+  const lines = [];
 
   if (Array.isArray(trainingTypes) && trainingTypes.length > 0) {
     trainingTypes
@@ -248,7 +228,7 @@ function trainingCostForGuest(guest, trainingTypes) {
         requestedSessions += qty;
         const unitKRW = Number(t.priceKRW) || 0;
         const unitUSD = Number(t.priceUSD) || 0;
-        rawLines.push({
+        lines.push({
           kind: 'training',
           id: t.id,
           nameKO: t.name || t.id,
@@ -271,7 +251,7 @@ function trainingCostForGuest(guest, trainingTypes) {
       const qty = Number(counts[id]) || 0;
       if (qty <= 0) return;
       requestedSessions += qty;
-      rawLines.push({
+      lines.push({
         kind: 'training',
         id,
         nameKO: id.replace('_', ' '),
@@ -285,12 +265,19 @@ function trainingCostForGuest(guest, trainingTypes) {
     });
   }
 
-  // Legacy docs: trainingCounts empty but divingDays stored as session count
-  if (requestedSessions <= 0 && (Number(guest.divingDays) || 0) > 0) {
+  // Legacy docs only: no trainingCounts object, divingDays = session count.
+  // Never fall back when trainingCounts exists (even all zeros) — stale
+  // divingDays may historically have equalled stay nights.
+  const hasCountsObject =
+    counts && typeof counts === 'object' && Object.keys(counts).length > 0;
+  if (
+    requestedSessions <= 0 &&
+    !hasCountsObject &&
+    (Number(guest.divingDays) || 0) > 0
+  ) {
     requestedSessions = Math.max(0, Number(guest.divingDays) || 0);
   }
 
-  const lines = applyTrainingAbsences(rawLines, guest.restDays);
   let costKRW = 0;
   let costUSD = 0;
   let discountedKRW = 0;
@@ -308,12 +295,9 @@ function trainingCostForGuest(guest, trainingTypes) {
     discountedUSD += (Number(line.amountUSD) || 0) * (1 - pct / 100);
   });
 
-  // If only legacy divingDays existed (no typed lines), scale by absences
+  // Legacy divingDays-only guest (no typed lines): bill full requested sum
   if (lines.length === 0 && requestedSessions > 0) {
-    billableSessions = Math.max(
-      0,
-      requestedSessions - (Number(guest.restDays) || 0),
-    );
+    billableSessions = requestedSessions;
   }
 
   return {
@@ -402,11 +386,12 @@ export function buildPricingExtras(settings, escortCode) {
 /**
  * Lodging and training are fully independent:
  * - Room $ ← billedNights (dates + early/late only)
- * - Training $ ← trainingCounts − restDays (never nights−1 / nights sync)
+ * - Training $ ← sum(trainingCounts) only (never restDays / nights sync)
  * - Options $ ← option fields only
  *
  * Guest field `divingDays` (written below) = requested training session sum
  * (training-only). Do not use it for lodging.
+ * restDays (불참) is manifest/ops only — does not reduce quote amounts.
  */
 export function processRoomsData(
   roomsData,

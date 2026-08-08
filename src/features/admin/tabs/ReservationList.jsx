@@ -4,11 +4,13 @@ import {
   isInstructorRole,
   isStaffAdmin,
 } from '../../../domain/adminRoles';
-import { formatMoney } from '../../../domain/pricing';
+import {
+  computeBilledNights,
+  formatMoney,
+} from '../../../domain/pricing';
 import { addAdminLog } from '../../../data/logsRepo';
 import { useToast } from '../../../ui/ToastContext';
 import {
-  actualTrainingCount,
   flattenGuestRows,
   formatRoomTypeLabel,
   isPaidStatus,
@@ -590,20 +592,14 @@ export default function ReservationList({
                           marginTop: 4,
                         }}
                       >
-                        🔥 {t('실제 트레이닝:', 'Actual Training:')}{' '}
-                        {actualTrainingCount(row)}
+                        🔥 {t('신청 트레이닝:', 'Applied Training:')}{' '}
+                        {requestedTrainingCount(row)}
                         {t('회', 'x')}
-                        {requestedTrainingCount(row) !==
-                        actualTrainingCount(row) ? (
+                        {(Number(row.restDays) || 0) > 0 ? (
                           <span style={{ color: '#8b95a1', fontWeight: 700 }}>
                             {' '}
-                            ({t('신청', 'Applied')}{' '}
-                            {requestedTrainingCount(row)}
-                            {t('회', 'x')}
-                            {(Number(row.restDays) || 0) > 0
-                              ? ` · ${t('불참', 'Absent')} ${Number(row.restDays)}${t('회', 'x')}`
-                              : ''}
-                            )
+                            ({t('불참', 'Absent')} {Number(row.restDays)}
+                            {t('회', 'x')})
                           </span>
                         ) : null}
                       </div>
@@ -650,7 +646,9 @@ export default function ReservationList({
                         }}
                       >
                         🌙 {t('숙박(일정):', 'Stay (dates):')}{' '}
-                        {row.billedNights || 0}
+                        {computeBilledNights(row) ||
+                          Number(row.billedNights) ||
+                          0}
                         {t('박', 'n')}{' '}
                         {isNoRoom
                           ? `(${t('방안씀', 'No Room')})`

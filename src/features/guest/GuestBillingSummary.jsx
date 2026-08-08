@@ -3,6 +3,7 @@ import {
   getGuestOptionQty,
   resolveOptionsCatalog,
 } from '../../domain/defaults';
+import { requestedTrainingCount } from '../../domain/listModel';
 import { formatPricePair, isEnglishLang } from '../../domain/pricing';
 
 function CategoryBox({ title, color, open, onToggle, children }) {
@@ -405,10 +406,30 @@ export default function GuestBillingSummary({
               >
                 <div style={{ fontSize: 11, color: '#8b95a1', marginBottom: 8 }}>
                   {t(
-                    '트레이닝 횟수는 직접 입력합니다. 숙박 박수와 자동 연동되지 않습니다.',
-                    'Training qty is entered separately — not auto-linked to stay nights.',
+                    '입력란 = 신청 횟수. 금액은 신청 트레이닝 횟수 기준입니다. 숙박과 무관.',
+                    'Inputs = applied qty. Amounts use applied training counts. Independent of stay.',
                   )}
                 </div>
+                {(() => {
+                  const applied = requestedTrainingCount(raw);
+                  const rest = Number(raw.restDays) || 0;
+                  return (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 800,
+                        color: '#0ca678',
+                        marginBottom: 8,
+                      }}
+                    >
+                      {t('신청(청구)', 'Applied (billed)')} {applied}
+                      {t('회', 'x')}
+                      {rest > 0
+                        ? ` · ${t('불참', 'Absent')} ${rest}${t('회', 'x')}`
+                        : ''}
+                    </div>
+                  );
+                })()}
                 {trainingTypes.length === 0 ? (
                   <div style={{ fontSize: 13, color: '#8b95a1' }}>
                     {t('등록된 트레이닝 없음', 'No training types')}
@@ -416,6 +437,15 @@ export default function GuestBillingSummary({
                 ) : (
                   trainingTypes.map((tr) => {
                     const qty = Number(raw.trainingCounts?.[tr.id]) || 0;
+                    const billLine = (guest.billingLines || []).find(
+                      (l) => l.kind === 'training' && l.id === tr.id,
+                    );
+                    const amountKRW = billLine
+                      ? Number(billLine.amountKRW) || 0
+                      : 0;
+                    const amountUSD = billLine
+                      ? Number(billLine.amountUSD) || 0
+                      : 0;
                     return (
                       <QtyRow
                         key={tr.id}
@@ -424,20 +454,11 @@ export default function GuestBillingSummary({
                         onQtyChange={(n) =>
                           setTrainingQty(roomIdx, guestIdx, tr.id, n)
                         }
-                        amountLabel={money(
-                          qty * (Number(tr.priceKRW) || 0),
-                          qty * (Number(tr.priceUSD) || 0),
-                        )}
+                        amountLabel={money(amountKRW, amountUSD)}
                       />
                     );
                   })
                 )}
-                {(Number(raw.restDays) || 0) > 0 ? (
-                  <div style={{ fontSize: 12, color: '#f09433', fontWeight: 700 }}>
-                    {t('불참(차감)', 'Absent (deduct)')}: {Number(raw.restDays)}
-                    {t('회', 'x')}
-                  </div>
-                ) : null}
                 {(Number(guest.escortDiscountKRW) || 0) > 0 ? (
                   <QtyRow
                     label={`${t('인솔자코드 할인', 'Escort discount')} (${guest.escortCode || escortCode})`}

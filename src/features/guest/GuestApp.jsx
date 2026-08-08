@@ -22,6 +22,7 @@ import {
   buildProfessionalReservationEmail,
   toEmailJsParams,
 } from '../../lib/emailTemplates';
+import { focusFirstMissingField } from '../../lib/focusRequiredField';
 import RollingBanner from '../../components/RollingBanner';
 import {
   clearGuestSession,
@@ -307,31 +308,48 @@ export default function GuestApp({ settings }) {
   };
 
   const validateStep1 = () => {
+    const missing = [];
     if (!repName.trim()) {
-      toast.warn(t('예약자명을 입력하세요.', 'Enter holder name.'));
-      return false;
+      missing.push({
+        key: 'repName',
+        msg: t('예약자명을 입력하세요.', 'Enter holder name.'),
+      });
     }
     if (!repEmail.trim() || !repEmail.includes('@')) {
-      toast.warn(t('이메일을 입력하세요.', 'Enter a valid email.'));
-      return false;
+      missing.push({
+        key: 'repEmail',
+        msg: t('이메일을 입력하세요.', 'Enter a valid email.'),
+      });
     }
     if (!/^\d{4}$/.test(groupPin)) {
-      toast.warn(t('4자리 PIN을 입력하세요.', 'Enter 4-digit PIN.'));
-      return false;
+      missing.push({
+        key: 'groupPin',
+        msg: t('4자리 PIN을 입력하세요.', 'Enter 4-digit PIN.'),
+      });
     }
     if (!bookerGrade) {
-      toast.warn(
-        t('예약자 등급을 선택하세요.', 'Select booker grade.'),
-      );
-      return false;
+      missing.push({
+        key: 'bookerGrade',
+        msg: t('예약자 등급을 선택하세요.', 'Select booker grade.'),
+      });
     }
     if (!consents.privacy) {
-      toast.warn(
-        t(
+      missing.push({
+        key: 'privacy-consent',
+        msg: t(
           '개인정보 수집·이용 동의는 필수입니다.',
           'Privacy consent is required.',
         ),
+      });
+    }
+    if (missing.length > 0) {
+      toast.warn(
+        missing[0].msg +
+          (missing.length > 1
+            ? t(` (미입력 ${missing.length}건)`, ` (${missing.length} missing)`)
+            : ''),
       );
+      focusFirstMissingField(missing.map((m) => m.key));
       return false;
     }
     localStorage.setItem(
@@ -486,11 +504,8 @@ export default function GuestApp({ settings }) {
           ? t(` (미입력 ${keys.length}건)`, ` (${keys.length} missing)`)
           : ''),
     );
-    requestAnimationFrame(() => {
-      document
-        .querySelector('[data-field-error="1"]')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
+    // Each submit focuses the first still-missing field in validation order.
+    focusFirstMissingField(keys);
     return false;
   };
 
@@ -537,10 +552,30 @@ export default function GuestApp({ settings }) {
   const endDraw = () => setDrawing(false);
 
   const submit = async () => {
-    if (!agreed || !hasStroke.current) {
+    const missing = [];
+    if (!agreed) {
+      missing.push({
+        key: 'terms-agree',
+        msg: t('약관 동의가 필요합니다.', 'Agreement is required.'),
+      });
+    }
+    if (!hasStroke.current) {
+      missing.push({
+        key: 'signature',
+        msg: t('서명이 필요합니다.', 'Signature is required.'),
+      });
+    }
+    if (missing.length > 0) {
       toast.warn(
-        t('약관 동의 및 서명이 필요합니다.', 'Agreement & Signature required.'),
+        missing.length > 1
+          ? t(
+              '약관 동의 및 서명이 필요합니다.',
+              'Agreement & Signature required.',
+            )
+          : missing[0].msg,
       );
+      // Order: terms first, then signature; next attempt jumps to whatever remains.
+      focusFirstMissingField(missing.map((m) => m.key));
       return;
     }
     try {
@@ -760,6 +795,7 @@ export default function GuestApp({ settings }) {
               </label>
               <input
                 className="input-field"
+                data-field="repName"
                 value={repName}
                 onChange={(e) =>
                   setRepName(filterPassportEnglishInput(e.target.value))
@@ -791,6 +827,7 @@ export default function GuestApp({ settings }) {
               </label>
               <input
                 className="input-field"
+                data-field="repEmail"
                 type="email"
                 value={repEmail}
                 onChange={(e) => setRepEmail(e.target.value.trim())}
@@ -811,6 +848,7 @@ export default function GuestApp({ settings }) {
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <input
                   className="input-field"
+                  data-field="groupPin"
                   style={{ flex: 1, marginBottom: 0 }}
                   inputMode="numeric"
                   maxLength={4}
@@ -842,6 +880,7 @@ export default function GuestApp({ settings }) {
               </label>
               <select
                 className="input-field"
+                data-field="bookerGrade"
                 value={bookerGrade}
                 onChange={(e) => setBookerGrade(e.target.value)}
               >
@@ -859,7 +898,11 @@ export default function GuestApp({ settings }) {
             className="sub-card"
             style={{ marginTop: 16, marginBottom: 0, fontSize: 13 }}
           >
-            <label className="check-label" style={{ marginTop: 0, fontWeight: 800 }}>
+            <label
+              className="check-label"
+              data-field="privacy-consent"
+              style={{ marginTop: 0, fontWeight: 800 }}
+            >
               <input
                 type="checkbox"
                 checked={
@@ -983,6 +1026,8 @@ export default function GuestApp({ settings }) {
             </p>
             <label
               className="check-label"
+              data-field="terms-agree"
+              id="booking-terms-agree"
               style={{
                 marginTop: 12,
                 marginBottom: 0,
@@ -1018,35 +1063,42 @@ export default function GuestApp({ settings }) {
             setEscortCode={setEscortCode}
           />
 
-          <div className="label-text">{t('전자 서명', 'Signature')}</div>
-          <canvas
-            ref={canvasRef}
-            width={640}
-            height={220}
-            style={{
-              width: '100%',
-              height: 180,
-              border: '1.5px solid var(--line)',
-              borderRadius: 12,
-              background: '#fff',
-              touchAction: 'none',
-            }}
-            onMouseDown={startDraw}
-            onMouseMove={moveDraw}
-            onMouseUp={endDraw}
-            onMouseLeave={endDraw}
-            onTouchStart={startDraw}
-            onTouchMove={moveDraw}
-            onTouchEnd={endDraw}
-          />
-          <button
-            type="button"
-            className="btn-secondary"
-            style={{ marginTop: 8 }}
-            onClick={clearCanvas}
-          >
-            {t('서명 지우기', 'Clear Signature')}
-          </button>
+          <div data-field="signature" id="booking-signature">
+            <div className="label-text">
+              {t('전자 서명', 'Signature')}
+              <span className="required-star"> *</span>
+            </div>
+            <canvas
+              ref={canvasRef}
+              id="booking-signature-pad"
+              tabIndex={0}
+              width={640}
+              height={220}
+              style={{
+                width: '100%',
+                height: 180,
+                border: '1.5px solid var(--line)',
+                borderRadius: 12,
+                background: '#fff',
+                touchAction: 'none',
+              }}
+              onMouseDown={startDraw}
+              onMouseMove={moveDraw}
+              onMouseUp={endDraw}
+              onMouseLeave={endDraw}
+              onTouchStart={startDraw}
+              onTouchMove={moveDraw}
+              onTouchEnd={endDraw}
+            />
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ marginTop: 8 }}
+              onClick={clearCanvas}
+            >
+              {t('서명 지우기', 'Clear Signature')}
+            </button>
+          </div>
         </div>
       )}
 

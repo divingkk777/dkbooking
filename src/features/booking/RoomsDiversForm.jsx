@@ -18,16 +18,18 @@ import {
   resolveOptionsCatalog,
 } from '../../domain/defaults';
 import { toLocalISODate } from '../../domain/dateUtils';
+import { requestedTrainingCount } from '../../domain/listModel';
 import {
   buildRoomShareAlert,
   buildStayOptionAutoAlert,
   buildVideoGuideAlert,
+  computeBilledNights,
   formatPricePair,
 } from '../../domain/pricing';
 import { useToast } from '../../ui/ToastContext';
 import { buildStep2FieldLights } from './step2FieldLights';
 
-function Field({ label, required, error, onActivate, children }) {
+function Field({ label, required, error, onActivate, fieldKey, children }) {
   const bindActivate = (child) => {
     if (!isValidElement(child)) return child;
     const wrap = (handler) => (e) => {
@@ -39,6 +41,7 @@ function Field({ label, required, error, onActivate, children }) {
         className: [child.props.className, error ? 'input-field-error' : '']
           .filter(Boolean)
           .join(' '),
+        'data-field': fieldKey || child.props['data-field'],
         'data-field-error': error ? '1' : undefined,
         onFocus: wrap(child.props.onFocus),
         onClick: wrap(child.props.onClick),
@@ -48,13 +51,17 @@ function Field({ label, required, error, onActivate, children }) {
       return cloneElement(child, {
         error,
         onActivate,
+        fieldKey,
       });
     }
     return child;
   };
 
   return (
-    <div className={`field${error ? ' field--error' : ''}`}>
+    <div
+      className={`field${error ? ' field--error' : ''}`}
+      data-field={fieldKey || undefined}
+    >
       <label className="label-text">
         {label}
         {required ? <span className="required-star"> *</span> : null}
@@ -73,6 +80,7 @@ function HourSelect({
   onChange,
   error,
   onActivate,
+  fieldKey,
   allowEmpty = false,
   emptyLabel = 'Select',
 }) {
@@ -89,6 +97,7 @@ function HourSelect({
       onChange={onChange}
       onFocus={() => onActivate?.()}
       onClick={() => onActivate?.()}
+      data-field={fieldKey || undefined}
       data-field-error={error ? '1' : undefined}
     >
       {allowEmpty ? <option value="">{emptyLabel}</option> : null}
@@ -527,6 +536,7 @@ export default function RoomsDiversForm({
               <Field
                 label={t('객실 타입', 'Room Type')}
                 required
+                fieldKey={`room:${roomIdx}:roomType`}
                 error={err(`room:${roomIdx}:roomType`)}
                 onActivate={() => touch(`room:${roomIdx}:roomType`)}
               >
@@ -552,6 +562,7 @@ export default function RoomsDiversForm({
               <Field
                 label={`${t('다이버 수', 'Diver Count')} (max ${maxGuests})`}
                 required
+                fieldKey={`room:${roomIdx}:guestCount`}
                 error={err(`room:${roomIdx}:guestCount`)}
                 onActivate={() => touch(`room:${roomIdx}:guestCount`)}
               >
@@ -654,6 +665,7 @@ export default function RoomsDiversForm({
                       <Field
                         label={t('영문 성명', 'Name (Passport)')}
                         required
+                        fieldKey={guestKey(roomIdx, guestIdx, 'name')}
                         error={guestErr(roomIdx, guestIdx, 'name')}
                         onActivate={() => touch(guestKey(roomIdx, guestIdx, 'name'))}
                       >
@@ -704,6 +716,7 @@ export default function RoomsDiversForm({
                         <Field
                           label={t('영문 성명', 'Name (Passport)')}
                           required
+                          fieldKey={guestKey(roomIdx, guestIdx, 'name')}
                           error={guestErr(roomIdx, guestIdx, 'name')}
                           onActivate={() => touch(guestKey(roomIdx, guestIdx, 'name'))}
                         >
@@ -719,6 +732,7 @@ export default function RoomsDiversForm({
                         <Field
                           label={t('국적', 'Nationality')}
                           required
+                          fieldKey={guestKey(roomIdx, guestIdx, 'nationality')}
                           error={guestErr(roomIdx, guestIdx, 'nationality')}
                           onActivate={() => touch(guestKey(roomIdx, guestIdx, 'nationality'))}
                         >
@@ -740,6 +754,7 @@ export default function RoomsDiversForm({
                         <Field
                           label={t('레벨', 'Level')}
                           required
+                          fieldKey={guestKey(roomIdx, guestIdx, 'level')}
                           error={guestErr(roomIdx, guestIdx, 'level')}
                           onActivate={() => touch(guestKey(roomIdx, guestIdx, 'level'))}
                         >
@@ -766,6 +781,7 @@ export default function RoomsDiversForm({
                         <Field
                           label={t('종목', 'Discipline')}
                           required
+                          fieldKey={guestKey(roomIdx, guestIdx, 'discipline')}
                           error={guestErr(roomIdx, guestIdx, 'discipline')}
                           onActivate={() => touch(guestKey(roomIdx, guestIdx, 'discipline'))}
                         >
@@ -796,6 +812,7 @@ export default function RoomsDiversForm({
                       <Field
                         label={t('목표수심 (m)', 'Target Depth (m)')}
                         required
+                        fieldKey={guestKey(roomIdx, guestIdx, 'targetDepth')}
                         error={guestErr(roomIdx, guestIdx, 'targetDepth')}
                         onActivate={() => touch(guestKey(roomIdx, guestIdx, 'targetDepth'))}
                       >
@@ -839,10 +856,34 @@ export default function RoomsDiversForm({
                           'Stay nights come only from check-in/out (+ early/late). Independent of training counts.',
                         )}
                       </div>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 800,
+                          color: '#3182f6',
+                          marginBottom: 10,
+                        }}
+                      >
+                        🌙 {t('숙박', 'Stay')}{' '}
+                        {Number(pg?.billedNights) ||
+                          computeBilledNights(guest) ||
+                          0}
+                        {t('박', 'n')}
+                        <span
+                          style={{
+                            fontWeight: 600,
+                            color: '#8b95a1',
+                            marginLeft: 6,
+                          }}
+                        >
+                          ({t('일정만', 'dates only')})
+                        </span>
+                      </div>
                       <div className="pair-row">
                         <Field
                           label={t('시작일', 'Start Date')}
                           required
+                          fieldKey={guestKey(roomIdx, guestIdx, 'startDate')}
                           error={guestErr(roomIdx, guestIdx, 'startDate')}
                           onActivate={() => touch(guestKey(roomIdx, guestIdx, 'startDate'))}
                         >
@@ -872,6 +913,7 @@ export default function RoomsDiversForm({
                         <Field
                           label={t('종료일', 'End Date')}
                           required
+                          fieldKey={guestKey(roomIdx, guestIdx, 'endDate')}
                           error={guestErr(roomIdx, guestIdx, 'endDate')}
                           onActivate={() => touch(guestKey(roomIdx, guestIdx, 'endDate'))}
                         >
@@ -895,6 +937,7 @@ export default function RoomsDiversForm({
                         <Field
                           label={t('체크인 시간', 'Check-in')}
                           required
+                          fieldKey={guestKey(roomIdx, guestIdx, 'checkInTime')}
                           error={guestErr(roomIdx, guestIdx, 'checkInTime')}
                           onActivate={() => touch(guestKey(roomIdx, guestIdx, 'checkInTime'))}
                         >
@@ -916,6 +959,7 @@ export default function RoomsDiversForm({
                         <Field
                           label={t('체크아웃 시간', 'Check-out')}
                           required
+                          fieldKey={guestKey(roomIdx, guestIdx, 'checkOutTime')}
                           error={guestErr(roomIdx, guestIdx, 'checkOutTime')}
                           onActivate={() => touch(guestKey(roomIdx, guestIdx, 'checkOutTime'))}
                         >
@@ -1025,6 +1069,7 @@ export default function RoomsDiversForm({
                           ? ' field-block-error'
                           : ''
                       }`}
+                      data-field={guestKey(roomIdx, guestIdx, 'training')}
                       data-field-error={
                         guestErr(roomIdx, guestIdx, 'training') ? '1' : undefined
                       }
@@ -1045,10 +1090,40 @@ export default function RoomsDiversForm({
                         }}
                       >
                         {t(
-                          '「실제 트레이닝」= 신청 − 불참(차감). 숙박 박수와 자동 연동되지 않습니다.',
-                          '“Actual training” = applied − absences. Not auto-linked to stay nights.',
+                          '견적/금액은 신청 트레이닝 횟수 기준입니다. 불참은 참고용이며 숙박과 연동되지 않습니다.',
+                          'Quote uses applied training counts. Absences are notes only; not linked to stay nights.',
                         )}
                       </div>
+                      {(() => {
+                        const applied = requestedTrainingCount(guest);
+                        const rest = Number(guest.restDays) || 0;
+                        return (
+                          <div
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 800,
+                              color: '#f04452',
+                              marginBottom: 10,
+                            }}
+                          >
+                            🔥 {t('신청 트레이닝', 'Applied Training')}{' '}
+                            {applied}
+                            {t('회', 'x')}
+                            {rest > 0
+                              ? ` · ${t('불참', 'Absent')} ${rest}${t('회', 'x')}`
+                              : ''}
+                            <span
+                              style={{
+                                fontWeight: 600,
+                                color: '#8b95a1',
+                                marginLeft: 6,
+                              }}
+                            >
+                              ({t('숙박과 별개', '≠ stay')})
+                            </span>
+                          </div>
+                        );
+                      })()}
                       {guestErr(roomIdx, guestIdx, 'training') ? (
                         <div className="field-error-hint">
                           {t(
@@ -1064,6 +1139,11 @@ export default function RoomsDiversForm({
                             <Field
                               key={tr.id}
                               label={`${tr.name} (${price(tr.priceKRW, tr.priceUSD)})`}
+                              fieldKey={guestKey(
+                                roomIdx,
+                                guestIdx,
+                                `train:${tr.id}`,
+                              )}
                               error={guestErr(
                                 roomIdx,
                                 guestIdx,
@@ -1094,7 +1174,8 @@ export default function RoomsDiversForm({
                       </div>
                       <div style={{ marginTop: 12, maxWidth: 220 }}>
                         <Field
-                          label={t('🚫 불참(차감)', '🚫 Absent (deduct)')}
+                          label={t('🚫 불참(참고)', '🚫 Absent (note)')}
+                          fieldKey={guestKey(roomIdx, guestIdx, 'restDays')}
                           error={guestErr(roomIdx, guestIdx, 'restDays')}
                           onActivate={() =>
                             touch(guestKey(roomIdx, guestIdx, 'restDays'))
@@ -1129,6 +1210,7 @@ export default function RoomsDiversForm({
                       <Field
                         label={t('세이프티 강사', 'Safety Instructor')}
                         required
+                        fieldKey={guestKey(roomIdx, guestIdx, 'safetyInstructor')}
                         error={guestErr(roomIdx, guestIdx, 'safetyInstructor')}
                         onActivate={() => touch(guestKey(roomIdx, guestIdx, 'safetyInstructor'))}
                       >
@@ -1158,6 +1240,7 @@ export default function RoomsDiversForm({
                             : ''
                         }`}
                         style={{ marginTop: 28 }}
+                        data-field={guestKey(roomIdx, guestIdx, 'agreeSelf60')}
                         data-field-error={
                           guestErr(roomIdx, guestIdx, 'agreeSelf60')
                             ? '1'
@@ -1226,6 +1309,7 @@ export default function RoomsDiversForm({
                           <Field
                             label={t('항공편명', 'Flight No.')}
                             required
+                            fieldKey={guestKey(roomIdx, guestIdx, 'pickupFlight')}
                             error={guestErr(roomIdx, guestIdx, 'pickupFlight')}
                             onActivate={() => touch(guestKey(roomIdx, guestIdx, 'pickupFlight'))}
                           >
@@ -1246,6 +1330,7 @@ export default function RoomsDiversForm({
                           <Field
                             label={t('도착시간', 'Arrival time')}
                             required
+                            fieldKey={guestKey(roomIdx, guestIdx, 'pickupTime')}
                             error={guestErr(roomIdx, guestIdx, 'pickupTime')}
                             onActivate={() => touch(guestKey(roomIdx, guestIdx, 'pickupTime'))}
                           >
@@ -1306,6 +1391,7 @@ export default function RoomsDiversForm({
                           <Field
                             label={t('항공편명', 'Flight No.')}
                             required
+                            fieldKey={guestKey(roomIdx, guestIdx, 'dropoffFlight')}
                             error={guestErr(roomIdx, guestIdx, 'dropoffFlight')}
                             onActivate={() => touch(guestKey(roomIdx, guestIdx, 'dropoffFlight'))}
                           >
@@ -1326,6 +1412,7 @@ export default function RoomsDiversForm({
                           <Field
                             label={t('출발시간', 'Departure time')}
                             required
+                            fieldKey={guestKey(roomIdx, guestIdx, 'dropoffTime')}
                             error={guestErr(roomIdx, guestIdx, 'dropoffTime')}
                             onActivate={() => touch(guestKey(roomIdx, guestIdx, 'dropoffTime'))}
                           >
@@ -1356,6 +1443,7 @@ export default function RoomsDiversForm({
                           opt.priceKRW,
                           opt.priceUSD,
                         )}/${t(opt.unitKO || '회', opt.unitEN || 'x')})`}
+                        fieldKey={guestKey(roomIdx, guestIdx, `opt:${opt.id}`)}
                         error={guestErr(roomIdx, guestIdx, `opt:${opt.id}`)}
                         onActivate={() => touch(guestKey(roomIdx, guestIdx, `opt:${opt.id}`))}
                       >

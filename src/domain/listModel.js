@@ -26,23 +26,27 @@ export function formatRoomTypeLabel(roomType) {
 /**
  * Training counts — fully independent of lodging/nights.
  *
- * - 신청(requested) = sum(trainingCounts)
- * - 실제(actual) = max(0, 신청 − restDays)  // Manifest 불참/차감
+ * - 신청(requested) = sum(trainingCounts) — quote/pricing basis
+ * - 실제(actual) = max(0, 신청 − restDays) — Manifest/ops only (NOT quote)
  * - 숙박(billedNights) = dates + early/late only (see computeBilledNights)
  *
  * Field `divingDays` (legacy/persisted) means requested training sessions only.
  * Never treat divingDays as lodging nights; never sync nights ↔ training.
+ * Never use actualTrainingCount for quote/billing amounts.
+ *
+ * If `trainingCounts` exists as an object, always use its sum (even 0).
+ * Do NOT fall back to divingDays when counts are explicitly zero — that
+ * leftover divingDays may be a stale nights value from older docs.
  */
 export function requestedTrainingCount(guest) {
   const counts = guest?.trainingCounts;
   if (counts && typeof counts === 'object') {
-    const sum = Object.values(counts).reduce(
+    return Object.values(counts).reduce(
       (s, v) => s + (Number(v) || 0),
       0,
     );
-    if (sum > 0) return sum;
   }
-  // Legacy: divingDays stored as training session count (not nights)
+  // Legacy only: no trainingCounts field — divingDays = requested sessions
   return Math.max(0, Number(guest?.divingDays) || 0);
 }
 

@@ -13,7 +13,12 @@ import {
   updateReservation,
 } from '../../data/reservationsRepo';
 import { DISCIPLINES, HOUR_OPTIONS, STORAGE_KEYS } from '../../domain/defaults';
-import { flattenGuestRows, rowKey } from '../../domain/listModel';
+import {
+  flattenGuestRows,
+  requestedTrainingCount,
+  rowKey,
+} from '../../domain/listModel';
+import { computeBilledNights } from '../../domain/pricing';
 import { createTranslator } from '../../i18n/t';
 import {
   BRAND_ASSETS,
@@ -1005,6 +1010,32 @@ export default function MyReservations({ settings }) {
             '일정 변경은 숙박만, 아래 횟수는 트레이닝만 반영됩니다.',
             'Date changes affect stay only; quantities below affect training only.',
           )}
+        </div>
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 800,
+            color: '#3182f6',
+            marginBottom: 4,
+          }}
+        >
+          🌙 {t('숙박', 'Stay')} {computeBilledNights(g) || 0}
+          {t('박', 'n')} ({t('일정만', 'dates only')})
+        </div>
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 800,
+            color: '#f04452',
+            marginBottom: 8,
+          }}
+        >
+          🔥 {t('신청 트레이닝', 'Applied Training')}{' '}
+          {requestedTrainingCount(g)}
+          {t('회', 'x')}
+          {(Number(g.restDays) || 0) > 0
+            ? ` · ${t('불참', 'Absent')} ${Number(g.restDays)}${t('회', 'x')}`
+            : ''}
         </div>
         <div className="grid-2 grid-2-dense">
           {trainingTypes.map((tr) => (
