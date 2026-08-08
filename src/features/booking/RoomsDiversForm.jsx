@@ -300,9 +300,13 @@ export default function RoomsDiversForm({
         const guests = [...(room.guests || [])];
         let nextVal = value;
         if (
-          ['islandHopping', 'funDiving', 'penaltyFee', 'videoCount'].includes(
-            key,
-          )
+          [
+            'islandHopping',
+            'funDiving',
+            'penaltyFee',
+            'videoCount',
+            'restDays',
+          ].includes(key)
         ) {
           nextVal = Math.max(0, Number(value) || 0);
         }
@@ -815,10 +819,25 @@ export default function RoomsDiversForm({
                         />
                       </Field>
                     </div>
+                  </div>
 
+                  <div className="diver-split">
                     <div className="diver-split-pane">
                       <div className="label-text" style={{ marginBottom: 10 }}>
                         {t('일정 / 숙박', 'Schedule / Stay')}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: '#6b7684',
+                          marginBottom: 8,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {t(
+                          '숙박 박수는 체크인·체크아웃(+얼리/레이트)으로만 계산됩니다. 트레이닝 횟수와 무관합니다.',
+                          'Stay nights come only from check-in/out (+ early/late). Independent of training counts.',
+                        )}
                       </div>
                       <div className="pair-row">
                         <Field
@@ -999,60 +1018,109 @@ export default function RoomsDiversForm({
                         </label>
                       </div>
                     </div>
-                  </div>
 
-                  <div
-                    style={{ marginTop: 16 }}
-                    className={
-                      guestErr(roomIdx, guestIdx, 'training')
-                        ? 'field-block-error'
-                        : undefined
-                    }
-                    data-field-error={
-                      guestErr(roomIdx, guestIdx, 'training') ? '1' : undefined
-                    }
-                  >
-                    <div className="label-text">
-                      {t(
-                        '신청 트레이닝 종류별 횟수 선택',
-                        'Select Training Sessions by Type',
-                      )}
-                      <span className="required-star"> *</span>
-                    </div>
-                    {guestErr(roomIdx, guestIdx, 'training') ? (
-                      <div className="field-error-hint">
+                    <div
+                      className={`diver-split-pane${
+                        guestErr(roomIdx, guestIdx, 'training')
+                          ? ' field-block-error'
+                          : ''
+                      }`}
+                      data-field-error={
+                        guestErr(roomIdx, guestIdx, 'training') ? '1' : undefined
+                      }
+                    >
+                      <div className="label-text">
                         {t(
-                          '트레이닝 또는 펀다이빙을 1회 이상 선택하세요.',
-                          'Select at least one training or fun diving session.',
+                          '신청 트레이닝 종류별 횟수 선택',
+                          'Select Training Sessions by Type',
+                        )}
+                        <span className="required-star"> *</span>
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: '#6b7684',
+                          marginBottom: 8,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {t(
+                          '「실제 트레이닝」= 신청 − 불참(차감). 숙박 박수와 자동 연동되지 않습니다.',
+                          '“Actual training” = applied − absences. Not auto-linked to stay nights.',
                         )}
                       </div>
-                    ) : null}
-                    <div className="grid-2 grid-2-dense">
-                      {trainingTypes
-                        .filter((tr) => tr.isActive !== false)
-                        .map((tr) => (
-                          <Field
-                            key={tr.id}
-                            label={`${tr.name} (${price(tr.priceKRW, tr.priceUSD)})`}
-                            error={guestErr(roomIdx, guestIdx, `train:${tr.id}`)}
-                            onActivate={() => touch(guestKey(roomIdx, guestIdx, `train:${tr.id}`))}
-                          >
-                            <input
-                              type="number"
-                              min="0"
-                              className="input-field"
-                              value={guest.trainingCounts?.[tr.id] || 0}
-                              onChange={(e) =>
-                                updateTrainingCount(
-                                  roomIdx,
-                                  guestIdx,
-                                  tr.id,
-                                  e.target.value,
+                      {guestErr(roomIdx, guestIdx, 'training') ? (
+                        <div className="field-error-hint">
+                          {t(
+                            '트레이닝 또는 펀다이빙을 1회 이상 선택하세요.',
+                            'Select at least one training or fun diving session.',
+                          )}
+                        </div>
+                      ) : null}
+                      <div className="grid-2 grid-2-dense">
+                        {trainingTypes
+                          .filter((tr) => tr.isActive !== false)
+                          .map((tr) => (
+                            <Field
+                              key={tr.id}
+                              label={`${tr.name} (${price(tr.priceKRW, tr.priceUSD)})`}
+                              error={guestErr(
+                                roomIdx,
+                                guestIdx,
+                                `train:${tr.id}`,
+                              )}
+                              onActivate={() =>
+                                touch(
+                                  guestKey(roomIdx, guestIdx, `train:${tr.id}`),
                                 )
                               }
-                            />
-                          </Field>
-                        ))}
+                            >
+                              <input
+                                type="number"
+                                min="0"
+                                className="input-field"
+                                value={guest.trainingCounts?.[tr.id] || 0}
+                                onChange={(e) =>
+                                  updateTrainingCount(
+                                    roomIdx,
+                                    guestIdx,
+                                    tr.id,
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                            </Field>
+                          ))}
+                      </div>
+                      <div style={{ marginTop: 12, maxWidth: 220 }}>
+                        <Field
+                          label={t('🚫 불참(차감)', '🚫 Absent (deduct)')}
+                          error={guestErr(roomIdx, guestIdx, 'restDays')}
+                          onActivate={() =>
+                            touch(guestKey(roomIdx, guestIdx, 'restDays'))
+                          }
+                        >
+                          <input
+                            type="number"
+                            min="0"
+                            className="input-field"
+                            value={guest.restDays || 0}
+                            onChange={(e) =>
+                              updateGuest(
+                                roomIdx,
+                                guestIdx,
+                                'restDays',
+                                e.target.value,
+                              )
+                            }
+                            style={{
+                              color: '#f09433',
+                              fontWeight: 900,
+                              textAlign: 'center',
+                            }}
+                          />
+                        </Field>
+                      </div>
                     </div>
                   </div>
 

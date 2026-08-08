@@ -168,11 +168,25 @@ export function buildRoomShareAlert({ lang, guestCount, roomType, roomTypes, t }
   return `${title}\n${body}\n${detail}`;
 }
 
-function nightsBetween(startDate, endDate) {
+/** Calendar nights between check-in and check-out (lodging only). */
+export function nightsBetween(startDate, endDate) {
   if (!startDate || !endDate) return 0;
   const start = new Date(startDate);
   const end = new Date(endDate);
   return Math.max(0, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
+}
+
+/**
+ * Billed stay nights — lodging only.
+ * = nightsBetween(start,end) + early check-in + late check-out.
+ * Never derived from trainingCounts / restDays / divingDays.
+ */
+export function computeBilledNights(guest) {
+  if (!guest) return 0;
+  let n = nightsBetween(guest.startDate, guest.endDate);
+  if (guest.dawnCheckIn) n += 1;
+  if (guest.lateCheckOut) n += 1;
+  return n;
 }
 
 function roomShareFallback(roomType, guestCount, billedNights) {
@@ -191,15 +205,39 @@ function roomShareFallback(roomType, guestCount, billedNights) {
   return { krw: 0, usd: 0 };
 }
 
+/**
+ * Apply Manifest 불참(restDays) to training line qtys.
+ * Deducts from the end of the line list (deterministic; independent of nights).
+ */
+function applyTrainingAbsences(lines, restDays) {
+  let remaining = Math.max(0, Number(restDays) || 0);
+  if (remaining <= 0 || !lines.length) return lines;
+  const next = lines.map((l) => ({ ...l }));
+  for (let i = next.length - 1; i >= 0 && remaining > 0; i -= 1) {
+    const qty = Number(next[i].qty) || 0;
+    if (qty <= 0) continue;
+    const deduct = Math.min(qty, remaining);
+    const newQty = qty - deduct;
+    next[i].qty = newQty;
+    next[i].amountKRW = newQty * (Number(next[i].unitKRW) || 0);
+    next[i].amountUSD = newQty * (Number(next[i].unitUSD) || 0);
+    remaining -= deduct;
+  }
+  return next.filter((l) => (Number(l.qty) || 0) > 0);
+}
+
+/**
+ * Training-only pricing from trainingCounts (+ restDays absences).
+ * Never uses billedNights / startDate / endDate.
+ *
+ * Persisted field `divingDays` = 신청 합계 (requested sessions) — training-only,
+ * NOT lodging nights. Billable qty = 신청 − restDays.
+ */
 function trainingCostForGuest(guest, trainingTypes) {
   const counts = guest.trainingCounts || {};
   const discounts = guest.trainingDiscounts || {};
-  let divingDays = 0;
-  let costKRW = 0;
-  let costUSD = 0;
-  let discountedKRW = 0;
-  let discountedUSD = 0;
-  const lines = [];
+  let requestedSessions = 0;
+  const rawLines = [];
 
   if (Array.isArray(trainingTypes) && trainingTypes.length > 0) {
     trainingTypes
@@ -207,20 +245,10 @@ function trainingCostForGuest(guest, trainingTypes) {
       .forEach((t) => {
         const qty = Number(counts[t.id]) || 0;
         if (qty <= 0) return;
-        divingDays += qty;
+        requestedSessions += qty;
         const unitKRW = Number(t.priceKRW) || 0;
         const unitUSD = Number(t.priceUSD) || 0;
-        const lineKRW = qty * unitKRW;
-        const lineUSD = qty * unitUSD;
-        costKRW += lineKRW;
-        costUSD += lineUSD;
-        const pct =
-          Number(discounts[t.id]) ||
-          Number(guest.trainingDiscount) ||
-          0;
-        discountedKRW += lineKRW * (1 - pct / 100);
-        discountedUSD += lineUSD * (1 - pct / 100);
-        lines.push({
+        rawLines.push({
           kind: 'training',
           id: t.id,
           nameKO: t.name || t.id,
@@ -228,8 +256,8 @@ function trainingCostForGuest(guest, trainingTypes) {
           qty,
           unitKRW,
           unitUSD,
-          amountKRW: lineKRW,
-          amountUSD: lineUSD,
+          amountKRW: qty * unitKRW,
+          amountUSD: qty * unitUSD,
         });
       });
   } else {
@@ -242,16 +270,8 @@ function trainingCostForGuest(guest, trainingTypes) {
     map.forEach(([id, krw, usd]) => {
       const qty = Number(counts[id]) || 0;
       if (qty <= 0) return;
-      divingDays += qty;
-      const lineKRW = qty * krw;
-      const lineUSD = qty * usd;
-      costKRW += lineKRW;
-      costUSD += lineUSD;
-      const pct =
-        Number(discounts[id]) || Number(guest.trainingDiscount) || 0;
-      discountedKRW += lineKRW * (1 - pct / 100);
-      discountedUSD += lineUSD * (1 - pct / 100);
-      lines.push({
+      requestedSessions += qty;
+      rawLines.push({
         kind: 'training',
         id,
         nameKO: id.replace('_', ' '),
@@ -259,14 +279,48 @@ function trainingCostForGuest(guest, trainingTypes) {
         qty,
         unitKRW: krw,
         unitUSD: usd,
-        amountKRW: lineKRW,
-        amountUSD: lineUSD,
+        amountKRW: qty * krw,
+        amountUSD: qty * usd,
       });
     });
   }
 
+  // Legacy docs: trainingCounts empty but divingDays stored as session count
+  if (requestedSessions <= 0 && (Number(guest.divingDays) || 0) > 0) {
+    requestedSessions = Math.max(0, Number(guest.divingDays) || 0);
+  }
+
+  const lines = applyTrainingAbsences(rawLines, guest.restDays);
+  let costKRW = 0;
+  let costUSD = 0;
+  let discountedKRW = 0;
+  let discountedUSD = 0;
+  let billableSessions = 0;
+
+  lines.forEach((line) => {
+    const qty = Number(line.qty) || 0;
+    billableSessions += qty;
+    costKRW += Number(line.amountKRW) || 0;
+    costUSD += Number(line.amountUSD) || 0;
+    const pct =
+      Number(discounts[line.id]) || Number(guest.trainingDiscount) || 0;
+    discountedKRW += (Number(line.amountKRW) || 0) * (1 - pct / 100);
+    discountedUSD += (Number(line.amountUSD) || 0) * (1 - pct / 100);
+  });
+
+  // If only legacy divingDays existed (no typed lines), scale by absences
+  if (lines.length === 0 && requestedSessions > 0) {
+    billableSessions = Math.max(
+      0,
+      requestedSessions - (Number(guest.restDays) || 0),
+    );
+  }
+
   return {
-    divingDays,
+    /** @deprecated name — means requested training sessions, NOT lodging */
+    divingDays: requestedSessions,
+    requestedSessions,
+    billableSessions,
     costKRW,
     costUSD,
     discountedKRW,
@@ -345,6 +399,15 @@ export function buildPricingExtras(settings, escortCode) {
   };
 }
 
+/**
+ * Lodging and training are fully independent:
+ * - Room $ ← billedNights (dates + early/late only)
+ * - Training $ ← trainingCounts − restDays (never nights−1 / nights sync)
+ * - Options $ ← option fields only
+ *
+ * Guest field `divingDays` (written below) = requested training session sum
+ * (training-only). Do not use it for lodging.
+ */
 export function processRoomsData(
   roomsData,
   exchangeRate = DEFAULT_EXCHANGE_RATE,
@@ -379,9 +442,7 @@ export function processRoomsData(
       .map((guest) => {
         if (!guest) return null;
 
-        let billedNights = nightsBetween(guest.startDate, guest.endDate);
-        if (guest.dawnCheckIn) billedNights += 1;
-        if (guest.lateCheckOut) billedNights += 1;
+        const billedNights = computeBilledNights(guest);
 
         let roomShareCost = 0;
         let roomShareCostUSD = 0;
@@ -576,8 +637,10 @@ export function processRoomsData(
         return {
           ...guest,
           billedNights,
-          divingDays: training.divingDays,
-          trainingDaysCount: training.divingDays,
+          // divingDays = 신청 트레이닝 횟수 (training-only; not lodging nights)
+          divingDays: training.requestedSessions ?? training.divingDays,
+          trainingDaysCount:
+            training.billableSessions ?? training.divingDays,
           singleRoomNights: guestCount === 1 ? billedNights : 0,
           doubleRoomNights: guestCount === 2 ? billedNights : 0,
           tripleRoomNights: guestCount >= 3 ? billedNights : 0,

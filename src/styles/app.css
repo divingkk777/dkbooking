@@ -853,6 +853,8 @@ table.table-custom td {
   align-items: flex-end;
   justify-content: center;
   padding: 16px;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 @media (min-width: 840px) {
@@ -866,12 +868,59 @@ table.table-custom td {
   max-width: 100%;
   max-height: 92vh;
   overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   background: #fff;
   border-radius: 20px;
   border: 2px solid var(--line-strong);
   padding: 20px;
   min-width: 0;
   box-sizing: border-box;
+}
+
+/* Quote modal: single inner scroller (header/actions fixed) */
+.modal-sheet.quote-modal-sheet {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.quote-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 20px 20px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.quote-modal-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px 20px;
+  touch-action: pan-y;
+}
+
+.quote-modal-actions {
+  flex-shrink: 0;
+  margin-top: 0 !important;
+  padding: 12px 20px calc(16px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: #fff;
+}
+
+.quote-qty-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #6b7684;
 }
 
 @media (max-width: 560px) {
@@ -885,6 +934,23 @@ table.table-custom td {
     max-height: 100dvh;
     border-radius: 16px 16px 0 0;
     padding: 16px 12px calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .modal-sheet.quote-modal-sheet {
+    padding: 0;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .quote-modal-header {
+    padding: 16px 12px 10px;
+  }
+
+  .quote-modal-scroll {
+    padding: 12px;
+  }
+
+  .quote-modal-actions {
+    padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
   }
 }
 

@@ -4,6 +4,7 @@ import {
   bookingSeqMap,
   formatRoomTypeLabel,
 } from '../../../domain/listModel';
+import { computeBilledNights } from '../../../domain/pricing';
 import AdminMemo from '../AdminMemo';
 
 const CANCEL_STATUSES = ['취소', '취소완료'];
@@ -19,19 +20,10 @@ function isGuestCancelled(res, guest) {
   return false;
 }
 
-function nightsBetween(startDate, endDate) {
-  if (!startDate || !endDate) return 0;
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  return Math.max(0, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
-}
-
+/** Lodging nights only (never from training). Prefer stored billedNights. */
 function guestBilledNights(guest) {
   if (Number(guest?.billedNights) > 0) return Number(guest.billedNights);
-  let n = nightsBetween(guest?.startDate, guest?.endDate);
-  if (guest?.dawnCheckIn) n += 1;
-  if (guest?.lateCheckOut) n += 1;
-  return n;
+  return computeBilledNights(guest);
 }
 
 function flattenRows(reservations) {

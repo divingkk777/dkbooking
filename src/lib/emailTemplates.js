@@ -164,8 +164,12 @@ export function buildProfessionalReservationEmail({
       const name = String(
         g.name || `${t('다이버', 'Diver')} ${i + 1}`,
       ).toUpperCase();
+      const stayNights = Number(g.billedNights) || 0;
       const metaLine = [
         `${g.startDate || '—'} ~ ${g.endDate || '—'}`,
+        stayNights > 0
+          ? `${t('숙박', 'Stay')} ${stayNights}${t('박', 'n')}`
+          : '',
         g.checkInTime ? `CI ${g.checkInTime}` : '',
         g.checkOutTime ? `CO ${g.checkOutTime}` : '',
       ]

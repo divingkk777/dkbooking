@@ -991,7 +991,20 @@ export default function MyReservations({ settings }) {
         </div>
 
         <div className="label-text" style={{ marginTop: 4 }}>
-          {t('트레이닝 횟수', 'Training qty')}
+          {t('트레이닝 횟수 (숙박과 별개)', 'Training qty (independent of stay)')}
+        </div>
+        <div
+          style={{
+            fontSize: 12,
+            color: '#6b7684',
+            marginBottom: 6,
+            fontWeight: 600,
+          }}
+        >
+          {t(
+            '일정 변경은 숙박만, 아래 횟수는 트레이닝만 반영됩니다.',
+            'Date changes affect stay only; quantities below affect training only.',
+          )}
         </div>
         <div className="grid-2 grid-2-dense">
           {trainingTypes.map((tr) => (

@@ -2,6 +2,7 @@ import {
   actualTrainingCount,
   formatRoomTypeLabel,
   isPaidStatus,
+  requestedTrainingCount,
 } from '../../domain/listModel';
 
 function formatMoney(n) {
@@ -124,6 +125,17 @@ export default function MyGuestRowCard({
             🔥 {t('실제 트레이닝:', 'Actual Training:')}{' '}
             {actualTrainingCount(row)}
             {t('회', 'x')}
+            {requestedTrainingCount(row) !== actualTrainingCount(row) ? (
+              <span style={{ color: '#8b95a1', fontWeight: 700 }}>
+                {' '}
+                ({t('신청', 'Applied')} {requestedTrainingCount(row)}
+                {t('회', 'x')}
+                {(Number(row.restDays) || 0) > 0
+                  ? ` · ${t('불참', 'Absent')} ${Number(row.restDays)}${t('회', 'x')}`
+                  : ''}
+                )
+              </span>
+            ) : null}
           </div>
           <div style={{ fontSize: 11, color: '#8b95a1', marginTop: 4 }}>
             {t('예약자', 'Holder')}: {row.repName || '—'}
@@ -164,7 +176,7 @@ export default function MyGuestRowCard({
               fontWeight: 700,
             }}
           >
-            🌙 {t('숙박:', 'Stay:')} {row.billedNights || 0}
+            🌙 {t('숙박(일정):', 'Stay (dates):')} {row.billedNights || 0}
             {t('박', 'n')}{' '}
             {isNoRoom ? `(${t('방안씀', 'No Room')})` : `[${roomLabel}]`}
           </div>

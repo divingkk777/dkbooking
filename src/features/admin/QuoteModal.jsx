@@ -4,6 +4,10 @@ import {
   EMPTY_TRAINING_DISCOUNTS,
 } from '../../domain/defaults';
 import {
+  actualTrainingCount,
+  requestedTrainingCount,
+} from '../../domain/listModel';
+import {
   formatMoney,
   formatPricePair,
   buildPricingExtras,
@@ -38,6 +42,21 @@ export default function QuoteModal({
   });
   const [customTotalKRW, setCustomTotalKRW] = useState(0);
   const [showDiscounted, setShowDiscounted] = useState(true);
+
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    const prevPaddingRight = document.body.style.paddingRight;
+    const scrollbarGap =
+      window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = 'hidden';
+    if (scrollbarGap > 0) {
+      document.body.style.paddingRight = `${scrollbarGap}px`;
+    }
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.body.style.paddingRight = prevPaddingRight;
+    };
+  }, []);
 
   useEffect(() => {
     if (!guest) return;
@@ -96,6 +115,14 @@ export default function QuoteModal({
 
   if (!guest || !preview) return null;
   const pg = preview.processedRooms[target.roomIdx].guests[target.guestIdx];
+  const roomNights = Number(pg.billedNights) || 0;
+  const optionQty = (pg.billingLines || [])
+    .filter((line) => line.kind === 'option')
+    .reduce((sum, line) => sum + (Number(line.qty) || 0), 0);
+  const trainingCounts = guest.trainingCounts || {};
+  const appliedTraining = requestedTrainingCount(guest);
+  const billableTraining = actualTrainingCount(guest);
+  const restDays = Number(guest.restDays) || 0;
 
   const applyQuote = async () => {
     try {
@@ -145,17 +172,12 @@ export default function QuoteModal({
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div
-        className="modal-sheet"
+        className="modal-sheet quote-modal-sheet"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
       >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            gap: 12,
-            marginBottom: 12,
-          }}
-        >
+        <div className="quote-modal-header">
           <h3 style={{ margin: 0 }}>
             {readOnly
               ? t('예약 내용 열람', 'Booking details (view only)')
@@ -166,190 +188,241 @@ export default function QuoteModal({
           </button>
         </div>
 
-        {readOnly ? (
-          <p style={{ marginTop: 0, color: '#6b7684', fontSize: 13 }}>
-            {t(
-              '스케줄러에서는 열람만 가능합니다. 수정은 예약 목록에서 진행하세요.',
-              'View only from Scheduler. Edit from Reservations list.',
-            )}
-          </p>
-        ) : (
-          <>
-            <div className="grid-2">
-              <div>
-                <label className="label-text">
-                  {t('객실 할인 %', 'Room discount %')}
-                </label>
-                <input
-                  type="number"
-                  className="input-field"
-                  value={roomDiscount}
-                  onChange={(e) => setRoomDiscount(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="label-text">
-                  {t('옵션 할인 %', 'Options discount %')}
-                </label>
-                <input
-                  type="number"
-                  className="input-field"
-                  value={optionsDiscount}
-                  onChange={(e) => setOptionsDiscount(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="sub-card">
-              <div className="label-text">
-                {t('트레이닝 종류별 할인 %', 'Per-training discount %')}
-              </div>
-              <div className="grid-2">
-                {settings.trainingTypesConfig.map((tr) => (
-                  <div key={tr.id}>
-                    <label className="label-text">{tr.name}</label>
-                    <input
-                      type="number"
-                      className="input-field"
-                      value={trainingDiscounts[tr.id] || 0}
-                      onChange={(e) =>
-                        setTrainingDiscounts((prev) => ({
-                          ...prev,
-                          [tr.id]: Number(e.target.value) || 0,
-                        }))
-                      }
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="label-text">
-                {t(
-                  '수동 지정 합계 (KRW, 0=자동)',
-                  'Custom total KRW (0=auto)',
-                )}
-              </label>
-              <input
-                type="number"
-                className="input-field"
-                value={customTotalKRW}
-                onChange={(e) => setCustomTotalKRW(e.target.value)}
-              />
-            </div>
-
-            <div className="tabs-row" style={{ marginTop: 12 }}>
-              <button
-                type="button"
-                className={`tab ${showDiscounted ? 'active' : ''}`}
-                onClick={() => setShowDiscounted(true)}
-              >
-                {t('할인 적용가 보기', 'Show Discounted')}
-              </button>
-              <button
-                type="button"
-                className={`tab ${!showDiscounted ? 'active' : ''}`}
-                onClick={() => setShowDiscounted(false)}
-              >
-                {t('할인 미적용(원금) 보기', 'Show Original')}
-              </button>
-            </div>
-          </>
-        )}
-
-        <div
-          ref={sheetRef}
-          id="full-invoice-card-node"
-          className="quote-official-sheet"
-        >
-          <OfficialQuoteHeader
-            t={t}
-            lang={lang}
-            subtitle={
-              res?.bookingInstructor
-                ? `${t('예약자', 'Holder')}: ${res.bookingInstructor}`
-                : undefined
-            }
-          />
-
-          <div className="quote-official-body">
-            <div className="quote-official-guest">
-              👤 {String(guest.name || '').toUpperCase()}
-              {(guest.nationality || guest.level) && (
-                <span style={{ fontWeight: 700, color: '#4e5968' }}>
-                  {' '}
-                  · {[guest.nationality, guest.level].filter(Boolean).join(' · ')}
-                </span>
+        <div className="quote-modal-scroll">
+          {readOnly ? (
+            <p style={{ marginTop: 0, color: '#6b7684', fontSize: 13 }}>
+              {t(
+                '스케줄러에서는 열람만 가능합니다. 수정은 예약 목록에서 진행하세요.',
+                'View only from Scheduler. Edit from Reservations list.',
               )}
-            </div>
-            <div className="quote-official-meta">
-              📅 {guest.startDate} ~ {guest.endDate}
-              {guest.billedNights != null
-                ? ` · ${guest.billedNights}${t('박', 'n')}`
-                : ''}
-            </div>
-
-            <div className="quote-official-line">
-              <span>• {t('객실', 'Room')}</span>
-              <span>
-                {formatPricePair(lang, pg.roomShareCost, pg.roomShareCostUSD)}
-              </span>
-            </div>
-            <div className="quote-official-line">
-              <span>• {t('트레이닝', 'Training')}</span>
-              <span>
-                {formatPricePair(lang, pg.trainingCost, pg.trainingCostUSD)}
-              </span>
-            </div>
-            <div className="quote-official-line">
-              <span>• {t('옵션', 'Options')}</span>
-              <span>
-                {formatPricePair(lang, pg.optionsCost, pg.optionsCostUSD)}
-              </span>
-            </div>
-            {pg.penaltyFee > 0 && (
-              <div className="quote-official-line" style={{ color: '#f04452' }}>
-                <span>• {t('패널티', 'Penalty')}</span>
-                <span>₩{formatMoney(pg.penaltyFee)}</span>
+            </p>
+          ) : (
+            <>
+              <div className="grid-2">
+                <div>
+                  <label className="label-text">
+                    {t('객실 할인 %', 'Room discount %')}
+                    <span className="quote-qty-hint">
+                      {t('선택', 'Selected')} {roomNights}
+                      {t('박', 'n')}
+                    </span>
+                  </label>
+                  <input
+                    type="number"
+                    className="input-field"
+                    value={roomDiscount}
+                    onChange={(e) => setRoomDiscount(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="label-text">
+                    {t('옵션 할인 %', 'Options discount %')}
+                    <span className="quote-qty-hint">
+                      {t('선택', 'Selected')} {optionQty}
+                      {lang === 'KO' ? '개' : ''}
+                    </span>
+                  </label>
+                  <input
+                    type="number"
+                    className="input-field"
+                    value={optionsDiscount}
+                    onChange={(e) => setOptionsDiscount(e.target.value)}
+                  />
+                </div>
               </div>
-            )}
-            {(Number(guest.escortDiscountKRW) ||
-              Number(pg.escortDiscountKRW) ||
-              0) > 0 && (
-              <div className="quote-official-line" style={{ color: '#7048e8' }}>
+
+              <div className="sub-card">
+                <div className="label-text">
+                  {t('트레이닝 종류별 할인 %', 'Per-training discount %')}
+                  <span className="quote-qty-hint">
+                    {t('신청', 'Applied')} {appliedTraining}
+                    {t('회', 'x')}
+                    {restDays > 0
+                      ? ` → ${t('실제', 'Actual')} ${billableTraining}${t('회', 'x')} (${t('불참', 'Absent')} ${restDays}${t('회', 'x')})`
+                      : ''}
+                  </span>
+                </div>
+                <div className="grid-2">
+                  {settings.trainingTypesConfig.map((tr) => {
+                    const qty = Number(trainingCounts[tr.id]) || 0;
+                    return (
+                      <div key={tr.id}>
+                        <label className="label-text">
+                          {tr.name}
+                          <span className="quote-qty-hint">
+                            {t('신청', 'Applied')} {qty}
+                            {t('회', 'x')}
+                          </span>
+                        </label>
+                        <input
+                          type="number"
+                          className="input-field"
+                          value={trainingDiscounts[tr.id] || 0}
+                          onChange={(e) =>
+                            setTrainingDiscounts((prev) => ({
+                              ...prev,
+                              [tr.id]: Number(e.target.value) || 0,
+                            }))
+                          }
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="label-text">
+                  {t(
+                    '수동 지정 합계 (KRW, 0=자동)',
+                    'Custom total KRW (0=auto)',
+                  )}
+                </label>
+                <input
+                  type="number"
+                  className="input-field"
+                  value={customTotalKRW}
+                  onChange={(e) => setCustomTotalKRW(e.target.value)}
+                />
+              </div>
+
+              <div className="tabs-row" style={{ marginTop: 12 }}>
+                <button
+                  type="button"
+                  className={`tab ${showDiscounted ? 'active' : ''}`}
+                  onClick={() => setShowDiscounted(true)}
+                >
+                  {t('할인 적용가 보기', 'Show Discounted')}
+                </button>
+                <button
+                  type="button"
+                  className={`tab ${!showDiscounted ? 'active' : ''}`}
+                  onClick={() => setShowDiscounted(false)}
+                >
+                  {t('할인 미적용(원금) 보기', 'Show Original')}
+                </button>
+              </div>
+            </>
+          )}
+
+          <div
+            ref={sheetRef}
+            id="full-invoice-card-node"
+            className="quote-official-sheet"
+          >
+            <OfficialQuoteHeader
+              t={t}
+              lang={lang}
+              subtitle={
+                res?.bookingInstructor
+                  ? `${t('예약자', 'Holder')}: ${res.bookingInstructor}`
+                  : undefined
+              }
+            />
+
+            <div className="quote-official-body">
+              <div className="quote-official-guest">
+                👤 {String(guest.name || '').toUpperCase()}
+                {(guest.nationality || guest.level) && (
+                  <span style={{ fontWeight: 700, color: '#4e5968' }}>
+                    {' '}
+                    ·{' '}
+                    {[guest.nationality, guest.level]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                )}
+              </div>
+              <div className="quote-official-meta">
+                📅 {guest.startDate} ~ {guest.endDate}
+                {pg.billedNights != null
+                  ? ` · ${t('숙박', 'Stay')} ${pg.billedNights}${t('박', 'n')}`
+                  : ''}
+                {appliedTraining > 0 || billableTraining > 0
+                  ? ` · ${t('트레이닝', 'Training')} ${billableTraining}${t('회', 'x')}`
+                  : ''}
+              </div>
+
+              <div className="quote-official-line">
                 <span>
-                  • {t('인솔자코드 할인', 'Escort discount')}
-                  {(pg.escortCode || res?.escortCode)
-                    ? ` (${pg.escortCode || res.escortCode})`
+                  • {t('객실(숙박)', 'Room (stay)')}
+                  {roomNights > 0
+                    ? ` (${roomNights}${t('박', 'n')})`
                     : ''}
                 </span>
                 <span>
+                  {formatPricePair(lang, pg.roomShareCost, pg.roomShareCostUSD)}
+                </span>
+              </div>
+              <div className="quote-official-line">
+                <span>
+                  • {t('트레이닝', 'Training')}
+                  {billableTraining > 0 || appliedTraining > 0
+                    ? ` (${t('실제', 'Actual')} ${billableTraining}${t('회', 'x')}${
+                        restDays > 0
+                          ? ` · ${t('신청', 'Applied')} ${appliedTraining}${t('회', 'x')}, ${t('불참', 'Absent')} ${restDays}${t('회', 'x')}`
+                          : ''
+                      })`
+                    : ''}
+                </span>
+                <span>
+                  {formatPricePair(lang, pg.trainingCost, pg.trainingCostUSD)}
+                </span>
+              </div>
+              <div className="quote-official-line">
+                <span>
+                  • {t('옵션', 'Options')}
+                  {optionQty > 0
+                    ? ` (${optionQty}${lang === 'KO' ? '개' : ''})`
+                    : ''}
+                </span>
+                <span>
+                  {formatPricePair(lang, pg.optionsCost, pg.optionsCostUSD)}
+                </span>
+              </div>
+              {pg.penaltyFee > 0 && (
+                <div className="quote-official-line" style={{ color: '#f04452' }}>
+                  <span>• {t('패널티', 'Penalty')}</span>
+                  <span>₩{formatMoney(pg.penaltyFee)}</span>
+                </div>
+              )}
+              {(Number(guest.escortDiscountKRW) ||
+                Number(pg.escortDiscountKRW) ||
+                0) > 0 && (
+                <div className="quote-official-line" style={{ color: '#7048e8' }}>
+                  <span>
+                    • {t('인솔자코드 할인', 'Escort discount')}
+                    {(pg.escortCode || res?.escortCode)
+                      ? ` (${pg.escortCode || res.escortCode})`
+                      : ''}
+                  </span>
+                  <span>
+                    {formatPricePair(
+                      lang,
+                      -(Number(pg.escortDiscountKRW) || 0),
+                      -(Number(pg.escortDiscountUSD) || 0),
+                    )}
+                  </span>
+                </div>
+              )}
+
+              <div className="quote-official-total">
+                <span>{t('최종 총 정산액', 'Grand Total')}</span>
+                <span>
                   {formatPricePair(
                     lang,
-                    -(Number(pg.escortDiscountKRW) || 0),
-                    -(Number(pg.escortDiscountUSD) || 0),
+                    pg.individualTotalKRW,
+                    pg.individualTotalUSD,
                   )}
                 </span>
               </div>
-            )}
-
-            <div className="quote-official-total">
-              <span>{t('최종 총 정산액', 'Grand Total')}</span>
-              <span>
-                {formatPricePair(
-                  lang,
-                  pg.individualTotalKRW,
-                  pg.individualTotalUSD,
-                )}
-              </span>
             </div>
-          </div>
 
-          <OfficialQuoteContacts t={t} lang={lang} />
+            <OfficialQuoteContacts t={t} lang={lang} />
+          </div>
         </div>
 
-        <div className="sticky-action-bar-inner" style={{ marginTop: 16 }}>
+        <div className="quote-modal-actions sticky-action-bar-inner">
           {readOnly ? (
             <button type="button" className="btn-primary" onClick={onClose}>
               {t('닫기', 'Close')}

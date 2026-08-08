@@ -391,8 +391,8 @@ export default function GuestBillingSummary({
                 />
                 <div style={{ fontSize: 11, color: '#8b95a1' }}>
                   {t(
-                    '박수는 일정·얼리/레이트 체크인에 따라 자동 계산됩니다.',
-                    'Nights are calculated from schedule and early/late options.',
+                    '숙박 박수는 일정·얼리/레이트만으로 계산됩니다 (트레이닝과 무관).',
+                    'Stay nights from schedule/early/late only (independent of training).',
                   )}
                 </div>
               </CategoryBox>
@@ -403,6 +403,12 @@ export default function GuestBillingSummary({
                 open={isOpen(trainKey)}
                 onToggle={() => toggle(trainKey)}
               >
+                <div style={{ fontSize: 11, color: '#8b95a1', marginBottom: 8 }}>
+                  {t(
+                    '트레이닝 횟수는 직접 입력합니다. 숙박 박수와 자동 연동되지 않습니다.',
+                    'Training qty is entered separately — not auto-linked to stay nights.',
+                  )}
+                </div>
                 {trainingTypes.length === 0 ? (
                   <div style={{ fontSize: 13, color: '#8b95a1' }}>
                     {t('등록된 트레이닝 없음', 'No training types')}
@@ -426,6 +432,12 @@ export default function GuestBillingSummary({
                     );
                   })
                 )}
+                {(Number(raw.restDays) || 0) > 0 ? (
+                  <div style={{ fontSize: 12, color: '#f09433', fontWeight: 700 }}>
+                    {t('불참(차감)', 'Absent (deduct)')}: {Number(raw.restDays)}
+                    {t('회', 'x')}
+                  </div>
+                ) : null}
                 {(Number(guest.escortDiscountKRW) || 0) > 0 ? (
                   <QtyRow
                     label={`${t('인솔자코드 할인', 'Escort discount')} (${guest.escortCode || escortCode})`}

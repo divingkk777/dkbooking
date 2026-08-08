@@ -465,7 +465,7 @@ export default function DashboardTab({ t, lang = 'KO', reservations }) {
       icon: '👤',
     },
     {
-      title: t('총 방문 일자 (투숙 숙박 수)', 'Stay Nights'),
+      title: t('총 숙박 박수 (일정 기준)', 'Stay Nights (from dates)'),
       value: `${stats.totalStayNights}${t('박', '')}`,
       color: '#f59f00',
       icon: '🌙',
@@ -477,13 +477,13 @@ export default function DashboardTab({ t, lang = 'KO', reservations }) {
       icon: '◎',
     },
     {
-      title: t('총 트레이닝 진행 횟수', 'Training Sessions'),
+      title: t('총 실제 트레이닝 횟수', 'Actual Training Sessions'),
       value: `${stats.totalSessions}${t('회', '')}`,
       color: '#e64980',
       icon: '🏊',
     },
     {
-      title: t('1인당 평균 트레이닝 횟수', 'Avg Sessions / Person'),
+      title: t('1인당 평균 실제 트레이닝', 'Avg Actual Training / Person'),
       value: `${stats.avgSessions}${t('회', '')}`,
       color: '#0ca678',
       icon: '∑',

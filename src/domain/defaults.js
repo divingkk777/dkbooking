@@ -269,7 +269,9 @@ export function createEmptyGuest() {
     checkOutTime: '',
     dawnCheckIn: false,
     lateCheckOut: false,
+    // restDays = training absences (불참 횟수), NOT lodging rest nights
     restDays: 0,
+    // trainingCounts independent of stay dates / billedNights
     trainingCounts: { ...EMPTY_TRAINING_COUNTS },
     trainingDiscounts: { ...EMPTY_TRAINING_DISCOUNTS },
     optionCounts: {},

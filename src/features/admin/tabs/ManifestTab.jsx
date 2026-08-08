@@ -176,8 +176,8 @@ export default function ManifestTab({
             `Restore [${row.name}] back to Attending?\n\n- 1 deducted training session will be restored.`,
           )
         : t(
-            `⚠️ [당일 불참/취소 및 패널티 규정 안내]\n\n[${row.name}] 다이버의 오늘 다이빙을 '불참' 처리하시겠습니까?\n\n• 트레이닝 1회가 차감 정산됩니다.\n• 규정에 따라 당일 불참 시 패널티가 적용될 수 있습니다.`,
-            `⚠️ Mark [${row.name}] absent for today's dive?\n\n• 1 training session will be deducted.\n• Same-day absence may incur a penalty.`,
+            `⚠️ [당일 불참/취소 및 패널티 규정 안내]\n\n[${row.name}] 다이버의 오늘 다이빙을 '불참' 처리하시겠습니까?\n\n• 트레이닝 1회가 차감 정산됩니다 (숙박 박수는 변경되지 않습니다).\n• 규정에 따라 당일 불참 시 패널티가 적용될 수 있습니다.`,
+            `⚠️ Mark [${row.name}] absent for today's dive?\n\n• 1 training session will be deducted (stay nights unchanged).\n• Same-day absence may incur a penalty.`,
           ),
     );
     if (!ok) return;

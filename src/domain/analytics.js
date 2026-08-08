@@ -1,10 +1,5 @@
-import { bookingSeqMap } from './listModel';
+import { actualTrainingCount, bookingSeqMap } from './listModel';
 import { formatMoney } from './pricing';
-
-function guestSessions(guest) {
-  const counts = guest.trainingCounts || {};
-  return Object.values(counts).reduce((s, v) => s + (Number(v) || 0), 0);
-}
 
 function emptyBucket() {
   return { totalKRW: 0, totalUSD: 0, items: {} };
@@ -83,8 +78,9 @@ export function computeDashboardStats(reservations, fromDate, toDate) {
 
         const krw = Number(guest.individualTotalKRW) || 0;
         const usd = Number(guest.individualTotalUSD) || 0;
+        // Stay nights ≠ training sessions (independent metrics)
         const nights = Number(guest.billedNights) || 0;
-        const sessions = guestSessions(guest);
+        const sessions = actualTrainingCount(guest);
         const depth = Number(guest.targetDepth) || 0;
 
         totalSalesKRW += krw;
