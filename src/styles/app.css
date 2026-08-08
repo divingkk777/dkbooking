@@ -923,6 +923,41 @@ table.table-custom td {
   color: #6b7684;
 }
 
+.quote-training-edit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.quote-training-edit-row {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafbfc;
+}
+
+.quote-training-edit-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #191f28;
+  margin-bottom: 6px;
+}
+
+.quote-training-edit-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.quote-training-edit-fields .label-text {
+  margin-bottom: 0;
+}
+
+.quote-training-edit-fields .input-field {
+  margin-top: 4px;
+}
+
 @media (max-width: 560px) {
   .modal-backdrop {
     padding: 0;
@@ -997,6 +1032,26 @@ table.table-custom td {
   border-radius: 6px;
   font-weight: 800;
   font-size: 11px;
+}
+
+/* Keep scroll-to-missing targets clear of toast (top) and sticky action bar (bottom) */
+[data-field],
+[data-field-wrap],
+#booking-terms-agree,
+#booking-signature,
+#booking-signature-pad,
+[id^="guest-"],
+[id^="room-"] {
+  scroll-margin-top: 96px;
+  scroll-margin-bottom: 120px;
+}
+
+.field-scroll-target {
+  outline: 2.5px solid #f08c00;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 4px rgba(240, 140, 0, 0.22);
+  border-radius: 12px;
+  transition: outline-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .input-field-error {

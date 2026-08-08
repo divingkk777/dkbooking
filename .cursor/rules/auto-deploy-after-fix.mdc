@@ -1,0 +1,24 @@
+---
+description: After requested code fixes/features, auto-deploy Firebase hosting without a separate deploy ask
+alwaysApply: true
+---
+
+# Auto-deploy after fixes
+
+When you finish implementing code fixes or features the user requested in this repo:
+
+1. Run hosting deploy without waiting for a separate 「배포」 ask:
+   - `npm run build`
+   - `firebase deploy --only hosting`
+2. Report the hosting URL when done (site `dkbooking` → typically `https://dkbooking.web.app`).
+
+## Still require explicit ask
+
+- Do **not** commit, tag, or push unless the user also explicitly asked (e.g. 커밋 / 테그 / 태그 / push).
+- Deploy preference ≠ permission to commit/tag/push.
+
+## Scope & safety
+
+- Deploy only the project you edited (`diving-reservation`). Do not deploy unrelated repos.
+- Never force-push or skip git hooks (`--no-verify`, etc.).
+- If build or deploy fails, fix or report the error; do not pretend it succeeded.

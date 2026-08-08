@@ -29,7 +29,14 @@ import {
 import { useToast } from '../../ui/ToastContext';
 import { buildStep2FieldLights } from './step2FieldLights';
 
+/** DOM id-safe form of guest:/room: field keys (colons → hyphens). */
+export function fieldDomId(fieldKey) {
+  if (!fieldKey) return undefined;
+  return String(fieldKey).replace(/:/g, '-');
+}
+
 function Field({ label, required, error, onActivate, fieldKey, children }) {
+  const domId = fieldDomId(fieldKey);
   const bindActivate = (child) => {
     if (!isValidElement(child)) return child;
     const wrap = (handler) => (e) => {
@@ -41,6 +48,7 @@ function Field({ label, required, error, onActivate, fieldKey, children }) {
         className: [child.props.className, error ? 'input-field-error' : '']
           .filter(Boolean)
           .join(' '),
+        id: child.props.id || domId,
         'data-field': fieldKey || child.props['data-field'],
         'data-field-error': error ? '1' : undefined,
         onFocus: wrap(child.props.onFocus),
@@ -60,9 +68,9 @@ function Field({ label, required, error, onActivate, fieldKey, children }) {
   return (
     <div
       className={`field${error ? ' field--error' : ''}`}
-      data-field={fieldKey || undefined}
+      data-field-wrap={fieldKey || undefined}
     >
-      <label className="label-text">
+      <label className="label-text" htmlFor={domId}>
         {label}
         {required ? <span className="required-star"> *</span> : null}
       </label>
@@ -92,6 +100,7 @@ function HourSelect({
       : normalizeHourTime(value, fallback);
   return (
     <select
+      id={fieldDomId(fieldKey)}
       className={`input-field${error ? ' input-field-error' : ''}`}
       value={display}
       onChange={onChange}
@@ -128,6 +137,8 @@ export default function RoomsDiversForm({
   optionsCatalog: optionsCatalogProp,
   safetyInstructors = [],
   processed,
+  /** Keys from the latest failed Step-2 submit — force-open collapsed “same” details */
+  submitErrors = null,
 }) {
   const toast = useToast();
   const today = toLocalISODate();
@@ -160,10 +171,17 @@ export default function RoomsDiversForm({
     [roomsData, trainingTypes, countOptions, touched],
   );
   const err = (key) => !!fieldLights[key];
-  const guestErr = (roomIdx, guestIdx, field) =>
-    err(`guest:${roomIdx}:${guestIdx}:${field}`);
+  const guestErr = (roomIdx, guestIdx, field) => {
+    const key = `guest:${roomIdx}:${guestIdx}:${field}`;
+    return err(key) || !!submitErrors?.[key];
+  };
   const guestKey = (roomIdx, guestIdx, field) =>
     `guest:${roomIdx}:${guestIdx}:${field}`;
+  const guestHasSubmitError = (roomIdx, guestIdx) => {
+    if (!submitErrors) return false;
+    const prefix = `guest:${roomIdx}:${guestIdx}:`;
+    return Object.keys(submitErrors).some((k) => k.startsWith(prefix));
+  };
 
   const setOptionCount = (roomIdx, guestIdx, option, rawValue) => {
     const next = Math.max(0, Number(rawValue) || 0);
@@ -595,7 +613,12 @@ export default function RoomsDiversForm({
               const offerSame = guestIdx > 0 && guestCount >= 2;
               const modeKey = guestModeKey(roomIdx, guestIdx);
               const mode = sameMode[modeKey] || (offerSame ? 'ask' : 'custom');
-              const showDetails = mode !== 'same' || !!detailsOpen[modeKey];
+              // Force-open collapsed same-schedule details when submit validation
+              // targets a field inside (otherwise scroll falls back to page top).
+              const showDetails =
+                mode !== 'same' ||
+                !!detailsOpen[modeKey] ||
+                guestHasSubmitError(roomIdx, guestIdx);
               const firstGuest = room.guests?.[0];
 
               if (mode === 'ask') {

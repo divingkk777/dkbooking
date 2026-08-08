@@ -180,9 +180,17 @@ export function nightsBetween(startDate, endDate) {
  * Billed stay nights — lodging only.
  * = nightsBetween(start,end) + early check-in + late check-out.
  * Never derived from trainingCounts / restDays / divingDays.
+ * Admin quote may set `billedNightsOverride` to bill a custom night count.
  */
 export function computeBilledNights(guest) {
   if (!guest) return 0;
+  if (
+    Object.prototype.hasOwnProperty.call(guest, 'billedNightsOverride') &&
+    guest.billedNightsOverride != null &&
+    guest.billedNightsOverride !== ''
+  ) {
+    return Math.max(0, Math.floor(Number(guest.billedNightsOverride) || 0));
+  }
   let n = nightsBetween(guest.startDate, guest.endDate);
   if (guest.dawnCheckIn) n += 1;
   if (guest.lateCheckOut) n += 1;

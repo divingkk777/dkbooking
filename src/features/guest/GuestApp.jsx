@@ -102,6 +102,13 @@ export default function GuestApp({ settings }) {
   });
   const [escortCode, setEscortCode] = useState('');
   const [drawing, setDrawing] = useState(false);
+  /** Step-3 missing anchors highlighted after a failed submit attempt */
+  const [step3Missing, setStep3Missing] = useState({
+    terms: false,
+    signature: false,
+  });
+  /** Step-2 submit validation keys — opens collapsed details + red lights */
+  const [step2SubmitErrors, setStep2SubmitErrors] = useState(null);
   const canvasRef = useRef(null);
   const hasStroke = useRef(false);
 
@@ -362,9 +369,13 @@ export default function GuestApp({ settings }) {
 
   const collectStep2Errors = (rooms) => {
     const errors = {};
+    const keys = [];
     const messages = [];
     const mark = (key, msg) => {
-      errors[key] = true;
+      if (!errors[key]) {
+        errors[key] = true;
+        keys.push(key);
+      }
       if (msg) messages.push(msg);
     };
 
@@ -489,13 +500,18 @@ export default function GuestApp({ settings }) {
         }
       }
     }
-    return { errors, messages };
+    return { errors, keys, messages };
   };
 
   const validateStep2 = () => {
-    const { errors, messages } = collectStep2Errors(roomsData);
-    const keys = Object.keys(errors);
-    if (keys.length === 0) return true;
+    const { errors, keys, messages } = collectStep2Errors(roomsData);
+    if (keys.length === 0) {
+      setStep2SubmitErrors(null);
+      return true;
+    }
+
+    // Open collapsed “same schedule” detail panes before scroll/focus runs.
+    setStep2SubmitErrors(errors);
 
     const uniqueMsgs = [...new Set(messages.filter(Boolean))];
     toast.warn(
@@ -565,6 +581,10 @@ export default function GuestApp({ settings }) {
         msg: t('서명이 필요합니다.', 'Signature is required.'),
       });
     }
+    setStep3Missing({
+      terms: !agreed,
+      signature: !hasStroke.current,
+    });
     if (missing.length > 0) {
       toast.warn(
         missing.length > 1
@@ -900,11 +920,14 @@ export default function GuestApp({ settings }) {
           >
             <label
               className="check-label"
+              htmlFor="booking-privacy-consent"
               data-field="privacy-consent"
               style={{ marginTop: 0, fontWeight: 800 }}
             >
               <input
+                id="booking-privacy-consent"
                 type="checkbox"
+                data-field="privacy-consent"
                 checked={
                   !!consents.privacy &&
                   !!consents.marketing &&
@@ -984,6 +1007,7 @@ export default function GuestApp({ settings }) {
             (s) => s.name || s,
           )}
           processed={processed}
+          submitErrors={step2SubmitErrors}
         />
       )}
 
@@ -1025,24 +1049,48 @@ export default function GuestApp({ settings }) {
               )}
             </p>
             <label
-              className="check-label"
+              className={`check-label${
+                step3Missing.terms && !agreed ? ' check-label-error' : ''
+              }`}
+              htmlFor="booking-terms-agree"
               data-field="terms-agree"
-              id="booking-terms-agree"
+              data-field-error={
+                step3Missing.terms && !agreed ? '1' : undefined
+              }
               style={{
+                display: 'block',
                 marginTop: 12,
                 marginBottom: 0,
                 padding: '10px 12px',
                 borderRadius: 10,
-                border: agreed
-                  ? '1.5px solid #0ca678'
-                  : '1.5px solid var(--line)',
-                background: agreed ? '#e6fcf5' : '#fff',
+                border:
+                  step3Missing.terms && !agreed
+                    ? undefined
+                    : agreed
+                      ? '1.5px solid #0ca678'
+                      : '1.5px solid var(--line)',
+                background:
+                  step3Missing.terms && !agreed
+                    ? undefined
+                    : agreed
+                      ? '#e6fcf5'
+                      : '#fff',
               }}
             >
               <input
+                id="booking-terms-agree"
                 type="checkbox"
+                data-field="terms-agree"
+                data-field-error={
+                  step3Missing.terms && !agreed ? '1' : undefined
+                }
                 checked={agreed}
-                onChange={(e) => setAgreed(e.target.checked)}
+                onChange={(e) => {
+                  setAgreed(e.target.checked);
+                  if (e.target.checked) {
+                    setStep3Missing((prev) => ({ ...prev, terms: false }));
+                  }
+                }}
               />
               {t(
                 '위 취소 및 환불 규정에 동의합니다.',
@@ -1063,7 +1111,13 @@ export default function GuestApp({ settings }) {
             setEscortCode={setEscortCode}
           />
 
-          <div data-field="signature" id="booking-signature">
+          <div
+            data-field-wrap="signature"
+            data-field-error={step3Missing.signature ? '1' : undefined}
+            id="booking-signature"
+            className={step3Missing.signature ? 'field-block-error' : undefined}
+            style={{ marginTop: 16 }}
+          >
             <div className="label-text">
               {t('전자 서명', 'Signature')}
               <span className="required-star"> *</span>
@@ -1071,24 +1125,38 @@ export default function GuestApp({ settings }) {
             <canvas
               ref={canvasRef}
               id="booking-signature-pad"
+              data-field="signature"
+              data-field-error={step3Missing.signature ? '1' : undefined}
               tabIndex={0}
               width={640}
               height={220}
               style={{
                 width: '100%',
                 height: 180,
-                border: '1.5px solid var(--line)',
+                border: step3Missing.signature
+                  ? '1.5px solid #f04452'
+                  : '1.5px solid var(--line)',
                 borderRadius: 12,
                 background: '#fff',
                 touchAction: 'none',
               }}
               onMouseDown={startDraw}
               onMouseMove={moveDraw}
-              onMouseUp={endDraw}
+              onMouseUp={() => {
+                endDraw();
+                if (hasStroke.current) {
+                  setStep3Missing((prev) => ({ ...prev, signature: false }));
+                }
+              }}
               onMouseLeave={endDraw}
               onTouchStart={startDraw}
               onTouchMove={moveDraw}
-              onTouchEnd={endDraw}
+              onTouchEnd={() => {
+                endDraw();
+                if (hasStroke.current) {
+                  setStep3Missing((prev) => ({ ...prev, signature: false }));
+                }
+              }}
             />
             <button
               type="button"
